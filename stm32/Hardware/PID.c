@@ -25,7 +25,7 @@ PIDController_t g_pid_vertical;
 PIDSystemStatus_t g_pid_system = {0};
 
 /* 私有函数声明 */
-static void PID_InitDefaultParams(PIDParams_t* params, PIDType_t type);
+static void PID_InitDefaultParams(PIDControlParams_t* params, PIDType_t type);
 static float PID_ComputeProportional(PIDController_t* controller);
 static float PID_ComputeIntegral(PIDController_t* controller);
 static float PID_ComputeDerivative(PIDController_t* controller);
@@ -102,7 +102,7 @@ bool PID_InitController(PIDController_t* controller, PIDType_t type)
 /**
  * @brief 初始化默认PID参数
  */
-static void PID_InitDefaultParams(PIDParams_t* params, PIDType_t type)
+static void PID_InitDefaultParams(PIDControlParams_t* params, PIDType_t type)
 {
     if (!params) {
         return;

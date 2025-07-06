@@ -16,7 +16,7 @@ static uint8_t tx_buffer[SERVO_MAX_PACKET_SIZE];    // 发送缓冲区
 static uint8_t rx_buffer[SERVO_MAX_PACKET_SIZE];    // 接收缓冲区
 static uint8_t rx_index = 0;                       // 接收索引
 static ServoPacket_t response_packet;              // 响应数据包
-// static uint32_t last_command_time = 0;             // 最后命令时间 (暂未使用)
+static uint32_t last_command_time = 0;             // 最后命令时间
 
 /* 全局变量定义 */
 ServoStatus_t g_servo_vertical = {

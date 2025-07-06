@@ -16,7 +16,7 @@ static uint8_t rx_buffer[COMM_MAX_PACKET_SIZE];     // 接收缓冲区
 static uint8_t rx_index = 0;                       // 接收索引
 static uint8_t tx_buffer[COMM_MAX_PACKET_SIZE];     // 发送缓冲区
 static CommPacket_t current_packet;                // 当前数据包
-// static uint32_t last_receive_time = 0;             // 最后接收时间 (暂未使用)
+static uint32_t last_receive_time = 0;             // 最后接收时间
 
 /* 全局变量定义 */
 CommState_t g_comm_state = COMM_STATE_IDLE;
