@@ -210,6 +210,24 @@
           },
           {
             "path": "../Hardware/OLED_Font.h"
+          },
+          {
+            "path": "../Hardware/Communication.c"
+          },
+          {
+            "path": "../Hardware/Communication.h"
+          },
+          {
+            "path": "../Hardware/PID.c"
+          },
+          {
+            "path": "../Hardware/PID.h"
+          },
+          {
+            "path": "../Hardware/Servo.c"
+          },
+          {
+            "path": "../Hardware/Servo.h"
           }
         ],
         "folders": []

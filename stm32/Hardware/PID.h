@@ -56,13 +56,13 @@ typedef struct {
     bool enable_integral_windup;            // 是否启用积分饱和保护
     bool enable_derivative_filter;          // 是否启用微分滤波
     float derivative_filter_alpha;          // 微分滤波系数 (0-1)
-} PIDParams_t;
+} PIDControlParams_t;
 
 /* PID控制器结构 */
 typedef struct {
     PIDType_t type;                         // 控制器类型
     PIDState_t state;                       // 控制器状态
-    PIDParams_t params;                     // PID参数
+    PIDControlParams_t params;              // PID参数
     
     // 控制变量
     float setpoint;                         // 设定值
@@ -202,7 +202,7 @@ PIDController_t* PID_GetController(PIDType_t type);
  * @param type 控制器类型
  * @return 参数指针
  */
-PIDParams_t* PID_GetParams(PIDType_t type);
+PIDControlParams_t* PID_GetParams(PIDType_t type);
 
 /**
  * @brief 获取PID系统状态

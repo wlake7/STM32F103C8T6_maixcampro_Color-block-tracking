@@ -443,7 +443,7 @@ PIDController_t* PID_GetController(PIDType_t type)
 /**
  * @brief 获取PID参数
  */
-PIDParams_t* PID_GetParams(PIDType_t type)
+PIDControlParams_t* PID_GetParams(PIDType_t type)
 {
     PIDController_t* controller = PID_GetController(type);
     return controller ? &controller->params : NULL;

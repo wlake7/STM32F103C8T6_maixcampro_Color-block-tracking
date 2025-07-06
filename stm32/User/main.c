@@ -41,7 +41,7 @@ static bool g_system_ready = false;
 static uint32_t g_last_heartbeat = 0;
 static uint32_t g_last_status_update = 0;
 static uint32_t g_last_oled_update = 0;
-static uint32_t g_system_tick = 0;
+// static uint32_t g_system_tick = 0;  // 系统时钟计数器 (暂未使用)
 
 /* 追踪控制变量 */
 static PositionData_t g_target_position = {0};
@@ -145,7 +145,7 @@ static void System_MainLoop(void)
     uint32_t current_tick = System_GetTick();
 
     // 更新系统时钟
-    g_system_tick = current_tick;
+    // g_system_tick = current_tick;  // 暂未使用
 
     // 处理通信数据
     System_ProcessCommunication();
@@ -236,9 +236,9 @@ static void System_UpdateTracking(void)
 
         // 角度限制
         if (new_h_angle > SERVO_ANGLE_MAX) new_h_angle = SERVO_ANGLE_MAX;
-        if (new_h_angle < SERVO_ANGLE_MIN) new_h_angle = SERVO_ANGLE_MIN;
+        // new_h_angle是uint16_t类型，不会小于0，所以不需要检查下限
         if (new_v_angle > SERVO_ANGLE_MAX) new_v_angle = SERVO_ANGLE_MAX;
-        if (new_v_angle < SERVO_ANGLE_MIN) new_v_angle = SERVO_ANGLE_MIN;
+        // new_v_angle是uint16_t类型，不会小于0，所以不需要检查下限
 
         // 控制舵机移动
         Servo_MoveToPosition(SERVO_ID_HORIZONTAL, new_h_angle, 100);
