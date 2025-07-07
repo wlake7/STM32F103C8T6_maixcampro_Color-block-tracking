@@ -7,10 +7,11 @@
 
 #include "ControlBoard.h"
 #include <string.h>
+#include <stdio.h>
 #include "stm32f10x.h"
 
 /* 全局变量定义 */
-ControlBoardSystem_t g_control_board_system = {0};
+ControlBoardSystem_t g_control_board_system;
 
 /* 私有变量 */
 static uint8_t rx_buffer[CONTROL_BOARD_MAX_PACKET_SIZE];
@@ -51,6 +52,10 @@ bool ControlBoard_Init(void)
     }
     
     CONTROL_BOARD_DEBUG("Control Board initialized");
+
+    // 发送基础硬件测试数据
+    ControlBoard_HardwareTest();
+
     return true;
 }
 
@@ -71,6 +76,7 @@ static void ControlBoard_USART2_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStructure;
     USART_InitTypeDef USART_InitStructure;
+    NVIC_InitTypeDef NVIC_InitStructure;
 
     // 使能GPIOA和USART2时钟
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
@@ -96,6 +102,16 @@ static void ControlBoard_USART2_Init(void)
     USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
     USART_Init(USART2, &USART_InitStructure);
 
+    // 配置NVIC中断
+    NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+
+    // 使能接收中断
+    USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
+
     // 使能USART
     USART_Cmd(USART2, ENABLE);
 }
@@ -110,18 +126,48 @@ static void ControlBoard_SendByte(uint8_t data)
 }
 
 /**
+ * @brief USART2硬件测试
+ */
+void ControlBoard_HardwareTest(void)
+{
+    printf("=== USART2 Hardware Test ===\r\n");
+
+    // 测试1: 发送简单字节序列
+    printf("Test 1: Sending simple byte sequence\r\n");
+    uint8_t test_data[] = {0x55, 0x55, 0xAA, 0xAA, 0xFF, 0x00};
+    for (int i = 0; i < sizeof(test_data); i++) {
+        ControlBoard_SendByte(test_data[i]);
+        printf("Sent: 0x%02X\r\n", test_data[i]);
+    }
+
+    // 测试2: 发送控制板协议格式的测试包
+    printf("Test 2: Sending control board protocol test packet\r\n");
+    uint8_t test_packet[] = {0x55, 0x55, 0x02, 0x0F}; // 获取电池电压命令
+    for (int i = 0; i < sizeof(test_packet); i++) {
+        ControlBoard_SendByte(test_packet[i]);
+        printf("Sent: 0x%02X ", test_packet[i]);
+    }
+    printf("\r\n");
+
+    printf("=== Hardware Test Complete ===\r\n");
+}
+
+/**
  * @brief 控制单个舵机移动
  */
 bool ControlBoard_MoveServo(uint8_t id, uint16_t position, uint16_t time)
 {
     if (!g_control_board_system.initialized) {
+        printf("ControlBoard not initialized!\r\n");
         return false;
     }
-    
+
     // 限制参数范围
     if (position > 1000) position = 1000;
     if (time > 30000) time = 30000;
-    
+
+    printf("Moving servo %d to position %d in %dms\r\n", id, position, time);
+
     // 构造数据包
     uint8_t data[6];
     data[0] = 1;                    // 舵机个数
@@ -130,16 +176,17 @@ bool ControlBoard_MoveServo(uint8_t id, uint16_t position, uint16_t time)
     data[3] = id;                   // 舵机ID
     data[4] = position & 0xFF;      // 位置低字节
     data[5] = (position >> 8) & 0xFF; // 位置高字节
-    
+
     bool result = ControlBoard_SendPacket(CMD_SERVO_MOVE, data, 6);
-    
+
     if (result) {
         g_control_board_system.stats.packets_sent++;
-        CONTROL_BOARD_DEBUG("Move servo %d to %d in %dms", id, position, time);
+        printf("Servo command sent successfully\r\n");
     } else {
         g_control_board_system.stats.packets_error++;
+        printf("Failed to send servo command\r\n");
     }
-    
+
     return result;
 }
 
@@ -373,6 +420,7 @@ bool ControlBoard_SetActionGroupSpeed(uint8_t group_id, uint16_t speed_percent)
 static bool ControlBoard_SendPacket(uint8_t command, uint8_t* data, uint8_t data_len)
 {
     if (data_len > CONTROL_BOARD_MAX_PACKET_SIZE - 4) {
+        printf("Data length too large: %d\r\n", data_len);
         return false;
     }
 
@@ -382,7 +430,7 @@ static bool ControlBoard_SendPacket(uint8_t command, uint8_t* data, uint8_t data
 
     packet[packet_len++] = CONTROL_BOARD_HEADER1;   // 帧头1
     packet[packet_len++] = CONTROL_BOARD_HEADER2;   // 帧头2
-    packet[packet_len++] = data_len + 2;            // 数据长度 (命令+参数+长度本身)
+    packet[packet_len++] = data_len + 2;            // 数据长度 (参数个数N + 指令1字节 + 长度字段1字节)
     packet[packet_len++] = command;                 // 命令
 
     // 添加参数数据
@@ -390,6 +438,13 @@ static bool ControlBoard_SendPacket(uint8_t command, uint8_t* data, uint8_t data
         memcpy(&packet[packet_len], data, data_len);
         packet_len += data_len;
     }
+
+    // 打印发送的数据包
+    printf("Sending packet: ");
+    for (uint8_t i = 0; i < packet_len; i++) {
+        printf("0x%02X ", packet[i]);
+    }
+    printf("\r\n");
 
     // 发送数据包
     for (uint8_t i = 0; i < packet_len; i++) {
@@ -492,12 +547,20 @@ void ControlBoard_IRQHandler(uint8_t data)
 {
     static uint8_t state = 0;
     static uint8_t expected_length = 0;
+    static uint32_t debug_counter = 0;
+
+    // 每100个字节打印一次调试信息
+    debug_counter++;
+    if (debug_counter % 100 == 0) {
+        printf("USART2 IRQ: received %d bytes\r\n", debug_counter);
+    }
 
     switch (state) {
         case 0:  // 等待第一个帧头
             if (data == CONTROL_BOARD_HEADER1) {
                 rx_buffer[0] = data;
                 state = 1;
+                printf("RX: Header1 found\r\n");
             }
             break;
 
@@ -505,6 +568,7 @@ void ControlBoard_IRQHandler(uint8_t data)
             if (data == CONTROL_BOARD_HEADER2) {
                 rx_buffer[1] = data;
                 state = 2;
+                printf("RX: Header2 found\r\n");
             } else {
                 state = 0;  // 重新开始
             }
@@ -515,6 +579,7 @@ void ControlBoard_IRQHandler(uint8_t data)
             expected_length = data + 2;  // 加上帧头长度
             rx_index = 3;
             state = 3;
+            printf("RX: Length=%d\r\n", data);
             break;
 
         case 3:  // 接收数据
@@ -523,6 +588,7 @@ void ControlBoard_IRQHandler(uint8_t data)
                 packet_received = true;
                 last_receive_time = ControlBoard_GetTick();
                 state = 0;  // 重新开始
+                printf("RX: Packet complete\r\n");
             }
             break;
 
@@ -599,12 +665,11 @@ void ControlBoard_Reset(void)
 }
 
 /**
- * @brief 获取系统时钟 (需要根据实际系统实现)
+ * @brief 获取系统时钟 (毫秒)
  */
 static uint32_t ControlBoard_GetTick(void)
 {
-    // 这里需要根据实际系统的时钟函数实现
-    // 例如: return HAL_GetTick(); 或者使用SysTick计数器
-    static uint32_t tick_counter = 0;
-    return ++tick_counter;  // 临时实现
+    // 使用外部系统时钟函数
+    extern uint32_t System_GetTick(void);
+    return System_GetTick();
 }

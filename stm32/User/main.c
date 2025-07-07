@@ -9,12 +9,7 @@
 
 #include "stm32f10x.h"
 #include "Delay.h"
-#include "OLED.h"
-#include "LED.h"
-#include "Key.h"
-#include "Communication.h"
 #include "ControlBoard.h"
-#include "PID.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -28,41 +23,41 @@ typedef enum {
 } SystemState_t;
 
 /* 系统配置 */
-#define SYSTEM_BAUDRATE             115200      // 通信波特率
 #define SYSTEM_LOOP_FREQUENCY       50          // 主循环频率(Hz)
 #define SYSTEM_LOOP_PERIOD          (1000/SYSTEM_LOOP_FREQUENCY)  // 主循环周期(ms)
-#define HEARTBEAT_INTERVAL          1000        // 心跳间隔(ms)
-#define STATUS_UPDATE_INTERVAL      100         // 状态更新间隔(ms)
-#define OLED_UPDATE_INTERVAL        200         // OLED更新间隔(ms)
 
 /* 全局变量 */
-static SystemState_t g_system_state = SYSTEM_STATE_INIT;
+static SystemState_t g_system_state = SYSTEM_STATE_CALIBRATION;
 static bool g_system_ready = false;
 static uint32_t g_last_heartbeat = 0;
 static uint32_t g_last_status_update = 0;
-static uint32_t g_last_oled_update = 0;
-// static uint32_t g_system_tick = 0;  // 系统时钟计数器 (暂未使用)
 
-/* 追踪控制变量 */
-static PositionData_t g_target_position = {0};
-static PositionData_t g_laser_position = {0};
-static float g_horizontal_output = 0.0f;
-static float g_vertical_output = 0.0f;
+/* 测试模式相关变量 */
+typedef enum {
+    TEST_STEP_H_LEFT = 0,
+    TEST_STEP_H_RIGHT,
+    TEST_STEP_V_UP,
+    TEST_STEP_V_DOWN,
+    TEST_STEP_TOP_LEFT,
+    TEST_STEP_TOP_RIGHT,
+    TEST_STEP_BOTTOM_RIGHT,
+    TEST_STEP_BOTTOM_LEFT,
+    TEST_STEP_CENTER,
+    TEST_STEP_COUNT
+} TestStep_t;
+
+static TestStep_t g_test_step = TEST_STEP_H_LEFT;
+static uint32_t g_test_last_time = 0;
+static bool g_test_mode_active = false;
 
 /* 函数声明 */
 static bool System_Init(void);
 static void System_MainLoop(void);
-static void System_ProcessCommunication(void);
-static void System_UpdateTracking(void);
-static void System_UpdateDisplay(void);
-static void System_SendHeartbeat(void);
-static void System_SendStatus(void);
-static void System_HandleError(void);
-static void System_ProcessKeys(void);
-static void Communication_DataHandler(CommCommand_t cmd, uint8_t* data, uint8_t length);
-static uint32_t System_GetTick(void);
+uint32_t System_GetTick(void);
 static void System_Delay(uint32_t ms);
 static void System_TestServoMotors(void);
+static void System_UpdateTestMode(void);
+static void System_StartTestMode(void);
 
 /**
  * @brief 主函数
@@ -72,7 +67,11 @@ int main(void)
     // 系统初始化
     if (!System_Init()) {
         g_system_state = SYSTEM_STATE_ERROR;
+        while(1); // 初始化失败，停止运行
     }
+
+    // 启动测试模式
+    System_StartTestMode();
 
     // 主循环
     while (1) {
@@ -86,54 +85,33 @@ int main(void)
  */
 static bool System_Init(void)
 {
-    // 基础模块初始化
-    OLED_Init();
-    LED_Init();
-    Key_Init();
-
-    // 显示启动信息
-    OLED_Clear();
-    OLED_ShowString(1, 1, "Laser Tracker");
-    OLED_ShowString(2, 1, "Initializing...");
-
-    // 通信模块初始化
-    if (!Communication_Init(SYSTEM_BAUDRATE, Communication_DataHandler)) {
-        OLED_ShowString(3, 1, "Comm Init Failed");
-        return false;
-    }
+    // 基础延时初始化
+    Delay_Init();
 
     // 控制板通信模块初始化
     if (!ControlBoard_Init()) {
-        OLED_ShowString(3, 1, "CtrlBoard Failed");
+        printf("ControlBoard Init Failed\r\n");
         return false;
     }
 
-    // PID控制器初始化
-    if (!PID_Init()) {
-        OLED_ShowString(3, 1, "PID Init Failed");
-        return false;
-    }
-
-    // 设置PID参数
-    PID_SetParams(PID_TYPE_HORIZONTAL, 2.0f, 0.1f, 0.5f);
-    PID_SetParams(PID_TYPE_VERTICAL, 2.5f, 0.15f, 0.6f);
-
-    // 启用PID控制器
-    PID_Enable(PID_TYPE_HORIZONTAL, true);
-    PID_Enable(PID_TYPE_VERTICAL, true);
+    // 基础USART2测试
+    printf("USART2 Hardware Test\r\n");
+    printf("Sending test data to control board...\r\n");
 
     // 初始化时间变量
     g_last_heartbeat = System_GetTick();
     g_last_status_update = System_GetTick();
-    g_last_oled_update = System_GetTick();
 
-    // 设置系统状态
-    g_system_state = SYSTEM_STATE_MANUAL;
+    // 设置系统状态为手动模式（测试模式）
+    g_system_state = SYSTEM_STATE_CALIBRATION;
     g_system_ready = true;
 
     // 显示初始化完成
     OLED_ShowString(3, 1, "Init Complete");
     System_Delay(1000);
+
+    // 自动启动测试模式
+    System_StartTestMode();
 
     return true;
 }
@@ -145,15 +123,6 @@ static void System_MainLoop(void)
 {
     uint32_t current_tick = System_GetTick();
 
-    // 更新系统时钟
-    // g_system_tick = current_tick;  // 暂未使用
-
-    // 处理通信数据
-    System_ProcessCommunication();
-
-    // 处理按键输入
-    System_ProcessKeys();
-
     // 根据系统状态执行相应逻辑
     switch (g_system_state) {
         case SYSTEM_STATE_CALIBRATION:
@@ -162,57 +131,20 @@ static void System_MainLoop(void)
             ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1000);
             break;
 
-        case SYSTEM_STATE_TRACKING:
-            // 追踪模式 - 执行PID控制
-            System_UpdateTracking();
-            break;
-
         case SYSTEM_STATE_MANUAL:
-            // 手动控制模式 - 可以在这里调用舵机测试
-            System_TestServoMotors();
-            break;
-
-        case SYSTEM_STATE_ERROR:
-            // 错误处理
-            System_HandleError();
+            // 手动控制模式 - 执行测试模式状态机
+            System_UpdateTestMode();
             break;
 
         default:
             break;
     }
 
-    // 定期发送心跳
-    if (current_tick - g_last_heartbeat >= HEARTBEAT_INTERVAL) {
-        System_SendHeartbeat();
-        g_last_heartbeat = current_tick;
-    }
-
-    // 定期发送状态
-    if (current_tick - g_last_status_update >= STATUS_UPDATE_INTERVAL) {
-        System_SendStatus();
-        g_last_status_update = current_tick;
-    }
-
-    // 定期更新显示
-    if (current_tick - g_last_oled_update >= OLED_UPDATE_INTERVAL) {
-        System_UpdateDisplay();
-        g_last_oled_update = current_tick;
-    }
-
-    // 处理模块
-    Communication_Process();
+    // 处理控制板模块
     ControlBoard_Process();
-    PID_Process();
 }
 
-/**
- * @brief 处理通信数据
- */
-static void System_ProcessCommunication(void)
-{
-    // 通信模块会通过回调函数处理数据
-    // 这里可以添加额外的通信处理逻辑
-}
+
 
 /**
  * @brief 更新追踪控制
@@ -250,195 +182,21 @@ static void System_UpdateTracking(void)
     ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, current_v_position, 100);
 }
 
-/**
- * @brief 更新显示
- */
-static void System_UpdateDisplay(void)
-{
-    char buffer[16];
 
-    OLED_Clear();
-
-    // 显示系统状态
-    switch (g_system_state) {
-        case SYSTEM_STATE_INIT:
-            OLED_ShowString(1, 1, "State: INIT");
-            break;
-        case SYSTEM_STATE_CALIBRATION:
-            OLED_ShowString(1, 1, "State: CALIB");
-            break;
-        case SYSTEM_STATE_TRACKING:
-            OLED_ShowString(1, 1, "State: TRACK");
-            break;
-        case SYSTEM_STATE_MANUAL:
-            OLED_ShowString(1, 1, "State: MANUAL");
-            break;
-        case SYSTEM_STATE_ERROR:
-            OLED_ShowString(1, 1, "State: ERROR");
-            break;
-    }
-
-    // 显示目标位置
-    sprintf(buffer, "T:%d,%d", g_target_position.x, g_target_position.y);
-    OLED_ShowString(2, 1, buffer);
-
-    // 显示激光位置
-    sprintf(buffer, "L:%d,%d", g_laser_position.x, g_laser_position.y);
-    OLED_ShowString(3, 1, buffer);
-
-    // 显示PID输出
-    sprintf(buffer, "O:%.1f,%.1f", g_horizontal_output, g_vertical_output);
-    OLED_ShowString(4, 1, buffer);
-}
-
-/**
- * @brief 发送心跳包
- */
-static void System_SendHeartbeat(void)
-{
-    Communication_SendHeartbeat();
-}
-
-/**
- * @brief 发送系统状态
- */
-static void System_SendStatus(void)
-{
-    SystemStatus_t status;
-    status.system_ready = g_system_ready ? 1 : 0;
-    status.servo_status = ControlBoard_IsCommOK() ? 1 : 0; // 控制板通信状态
-    status.tracking_mode = (uint8_t)g_system_state;
-    status.error_code = 0;
-
-    Communication_SendSystemStatus(&status);
-}
-
-/**
- * @brief 错误处理
- */
-static void System_HandleError(void)
-{
-    // LED闪烁指示错误
-    static uint32_t last_led_toggle = 0;
-    uint32_t current_tick = System_GetTick();
-
-    if (current_tick - last_led_toggle >= 500) {
-        LED1_Turn();
-        last_led_toggle = current_tick;
-    }
-
-    // 停止所有动作组
-    ControlBoard_StopActionGroup();
-
-    // 禁用PID控制器
-    PID_Enable(PID_TYPE_HORIZONTAL, false);
-    PID_Enable(PID_TYPE_VERTICAL, false);
-}
-
-/**
- * @brief 处理按键输入
- */
-static void System_ProcessKeys(void)
-{
-    uint8_t key_num = Key_GetNum();
-
-    if (key_num == 1) {
-        // 按键1: 切换系统状态
-        switch (g_system_state) {
-            case SYSTEM_STATE_CALIBRATION:
-                g_system_state = SYSTEM_STATE_TRACKING;
-                PID_Enable(PID_TYPE_HORIZONTAL, true);
-                PID_Enable(PID_TYPE_VERTICAL, true);
-                break;
-            case SYSTEM_STATE_TRACKING:
-                g_system_state = SYSTEM_STATE_MANUAL;
-                PID_Enable(PID_TYPE_HORIZONTAL, false);
-                PID_Enable(PID_TYPE_VERTICAL, false);
-                break;
-            case SYSTEM_STATE_MANUAL:
-                g_system_state = SYSTEM_STATE_CALIBRATION;
-                break;
-            default:
-                break;
-        }
-    }
-    else if (key_num == 2) {
-        // 按键2: 启动舵机测试
-        System_TestServoMotors();
-    }
-}
-
-/**
- * @brief 通信数据处理回调函数
- */
-static void Communication_DataHandler(CommCommand_t cmd, uint8_t* data, uint8_t length)
-{
-    switch (cmd) {
-        case CMD_TARGET_POSITION:
-            if (length >= 16) {
-                // 解析目标位置数据 (前8字节)
-                g_target_position.x = data[0] | (data[1] << 8);
-                g_target_position.y = data[2] | (data[3] << 8);
-                g_target_position.confidence = data[4] | (data[5] << 8);
-                g_target_position.timestamp = data[6] | (data[7] << 8);
-
-                // 解析激光位置数据 (后8字节)
-                g_laser_position.x = data[8] | (data[9] << 8);
-                g_laser_position.y = data[10] | (data[11] << 8);
-                g_laser_position.confidence = data[12] | (data[13] << 8);
-                g_laser_position.timestamp = data[14] | (data[15] << 8);
-            }
-            break;
-
-        case CMD_LASER_POSITION:
-            // 激光位置数据已包含在CMD_TARGET_POSITION中，此命令保留备用
-            break;
-
-        case CMD_PID_PARAMS:
-            if (length >= 12) {
-                // 解析PID参数
-                uint16_t kp_h = data[0] | (data[1] << 8);
-                uint16_t ki_h = data[2] | (data[3] << 8);
-                uint16_t kd_h = data[4] | (data[5] << 8);
-                uint16_t kp_v = data[6] | (data[7] << 8);
-                uint16_t ki_v = data[8] | (data[9] << 8);
-                uint16_t kd_v = data[10] | (data[11] << 8);
-
-                // 转换为浮点数 (除以100)
-                PID_SetParams(PID_TYPE_HORIZONTAL, kp_h/100.0f, ki_h/100.0f, kd_h/100.0f);
-                PID_SetParams(PID_TYPE_VERTICAL, kp_v/100.0f, ki_v/100.0f, kd_v/100.0f);
-            }
-            break;
-
-        case CMD_CALIBRATION:
-            // 进入标定模式
-            g_system_state = SYSTEM_STATE_CALIBRATION;
-            PID_Reset(PID_TYPE_HORIZONTAL);
-            PID_Reset(PID_TYPE_VERTICAL);
-            break;
-
-        case CMD_HEARTBEAT:
-            // 心跳响应
-            break;
-
-        default:
-            break;
-    }
-}
 
 /**
  * @brief 获取系统时钟
  */
-static uint32_t System_GetTick(void)
+uint32_t System_GetTick(void)
 {
     // 使用SysTick计数器获取毫秒时间
-    // 假设系统时钟72MHz，SysTick配置为1ms中断
+    // 假设SysTick配置为1ms中断，72MHz系统时钟
     static uint32_t tick_ms = 0;
     static uint32_t last_systick = 0;
-    uint32_t current_systick = SysTick->VAL;
 
-    // 简化实现：每次调用增加主循环周期时间
-    tick_ms += SYSTEM_LOOP_PERIOD;  // 20ms (50Hz主循环)
+    // 简单的毫秒计数器实现
+    // 在实际项目中应该使用SysTick中断或HAL_GetTick()
+    tick_ms++;
     return tick_ms;
 }
 
@@ -456,105 +214,162 @@ static void System_Delay(uint32_t ms)
  */
 static void System_TestServoMotors(void)
 {
-    // 显示测试开始信息
-    OLED_ShowString(3, 1, "Servo Test Start");
-    OLED_ShowString(4, 1, "Running...      ");
-    LED1_ON();
-    printf("Servo test started...\r\n");
+    printf("Starting servo test sequence...\r\n");
 
-    // 8个测试位置的循环
-    while (1) {
-        // 检查是否按键停止测试
-        if (Key_GetNum() == 2) {
-            LED1_OFF();
-            OLED_ShowString(3, 1, "Servo Test Stop ");
-            OLED_ShowString(4, 1, "               ");
-            printf("Servo test stopped\r\n");
+    // 位置1: 水平舵机向左，垂直舵机中心
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+    printf("Servo test: H-Left, V-Center\r\n");
+    System_Delay(2000);
 
-            // 舵机回到中心位置
-            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1000);
-            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1000);
-            return;
-        }
+    // 位置2: 水平舵机向右，垂直舵机中心
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+    printf("Servo test: H-Right, V-Center\r\n");
+    System_Delay(2000);
 
-        // 位置1: 水平舵机向左，垂直舵机中心
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
-        printf("Servo test: H-Left, V-Center\r\n");
-        System_Delay(2000);  // 延迟2秒
+    // 位置3: 水平舵机中心，垂直舵机向上
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+    printf("Servo test: H-Center, V-Up\r\n");
+    System_Delay(2000);
 
-        if (Key_GetNum() == 2) break;  // 检查停止按键
+    // 位置4: 水平舵机中心，垂直舵机向下
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+    printf("Servo test: H-Center, V-Down\r\n");
+    System_Delay(2000);
 
-        // 位置2: 水平舵机向右，垂直舵机中心
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
-        printf("Servo test: H-Right, V-Center\r\n");
-        System_Delay(2000);
+    // 位置5: 左上角
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+    printf("Servo test: Top-Left\r\n");
+    System_Delay(2000);
 
-        if (Key_GetNum() == 2) break;
+    // 位置6: 右上角
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+    printf("Servo test: Top-Right\r\n");
+    System_Delay(2000);
 
-        // 位置3: 水平舵机中心，垂直舵机向上
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
-        printf("Servo test: H-Center, V-Up\r\n");
-        System_Delay(2000);
+    // 位置7: 右下角
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+    printf("Servo test: Bottom-Right\r\n");
+    System_Delay(2000);
 
-        if (Key_GetNum() == 2) break;
+    // 位置8: 左下角
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+    printf("Servo test: Bottom-Left\r\n");
+    System_Delay(2000);
 
-        // 位置4: 水平舵机中心，垂直舵机向下
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
-        printf("Servo test: H-Center, V-Down\r\n");
-        System_Delay(2000);
+    // 回到中心位置
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+    printf("Servo test: Center - Test complete\r\n");
+    System_Delay(2000);
+}
 
-        if (Key_GetNum() == 2) break;
+/**
+ * @brief 启动测试模式
+ */
+static void System_StartTestMode(void)
+{
+    g_test_mode_active = true;
+    g_test_step = TEST_STEP_H_LEFT;
+    g_test_last_time = System_GetTick();
+    g_system_state = SYSTEM_STATE_MANUAL;
+    printf("Servo test started\r\n");
+}
 
-        // 位置5: 左上角
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
-        printf("Servo test: Top-Left\r\n");
-        System_Delay(2000);
-
-        if (Key_GetNum() == 2) break;
-
-        // 位置6: 右上角
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
-        printf("Servo test: Top-Right\r\n");
-        System_Delay(2000);
-
-        if (Key_GetNum() == 2) break;
-
-        // 位置7: 右下角
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
-        printf("Servo test: Bottom-Right\r\n");
-        System_Delay(2000);
-
-        if (Key_GetNum() == 2) break;
-
-        // 位置8: 左下角
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
-        printf("Servo test: Bottom-Left\r\n");
-        System_Delay(2000);
-
-        if (Key_GetNum() == 2) break;
-
-        // 回到中心位置，准备下一轮循环
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
-        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
-        printf("Servo test: Center - Next cycle\r\n");
-        System_Delay(2000);
+/**
+ * @brief 更新测试模式状态机
+ */
+static void System_UpdateTestMode(void)
+{
+    if (!g_test_mode_active) {
+        return;
     }
 
-    // 如果跳出循环，执行停止操作
-    LED1_OFF();
-    OLED_ShowString(3, 1, "Servo Test Stop ");
-    OLED_ShowString(4, 1, "               ");
-    printf("Servo test stopped\r\n");
+    uint32_t current_time = System_GetTick();
 
-    // 舵机回到中心位置
-    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1000);
-    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1000);
+    // 每2秒切换一个测试步骤
+    if ((current_time - g_test_last_time) < 2000) {
+        return;
+    }
+
+    g_test_last_time = current_time;
+
+    switch (g_test_step) {
+        case TEST_STEP_H_LEFT:
+            // 位置1: 水平舵机向左，垂直舵机中心
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+            printf("Servo test: H-Left, V-Center\r\n");
+            break;
+
+        case TEST_STEP_H_RIGHT:
+            // 位置2: 水平舵机向右，垂直舵机中心
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+            printf("Servo test: H-Right, V-Center\r\n");
+            break;
+
+        case TEST_STEP_V_UP:
+            // 位置3: 水平舵机中心，垂直舵机向上
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+            printf("Servo test: H-Center, V-Up\r\n");
+            break;
+
+        case TEST_STEP_V_DOWN:
+            // 位置4: 水平舵机中心，垂直舵机向下
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+            printf("Servo test: H-Center, V-Down\r\n");
+            break;
+
+        case TEST_STEP_TOP_LEFT:
+            // 位置5: 左上角
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+            printf("Servo test: Top-Left\r\n");
+            break;
+
+        case TEST_STEP_TOP_RIGHT:
+            // 位置6: 右上角
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+            printf("Servo test: Top-Right\r\n");
+            break;
+
+        case TEST_STEP_BOTTOM_RIGHT:
+            // 位置7: 右下角
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+            printf("Servo test: Bottom-Right\r\n");
+            break;
+
+        case TEST_STEP_BOTTOM_LEFT:
+            // 位置8: 左下角
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+            printf("Servo test: Bottom-Left\r\n");
+            break;
+
+        case TEST_STEP_CENTER:
+            // 回到中心位置，准备下一轮循环
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+            printf("Servo test: Center - Next cycle\r\n");
+            break;
+
+        default:
+            g_test_step = TEST_STEP_H_LEFT;
+            return;
+    }
+
+    // 切换到下一个测试步骤
+    g_test_step = (TestStep_t)((g_test_step + 1) % TEST_STEP_COUNT);
 }

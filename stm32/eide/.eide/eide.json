@@ -224,12 +224,6 @@
             "path": "../Hardware/PID.h"
           },
           {
-            "path": "../Hardware/Servo.c"
-          },
-          {
-            "path": "../Hardware/Servo.h"
-          },
-          {
             "path": "../Hardware/ControlBoard.c"
           },
           {
@@ -266,7 +260,9 @@
   },
   "targets": {
     "Target 1": {
-      "excludeList": [],
+      "excludeList": [
+        "<virtual_root>/Hardware/Servo.c"
+      ],
       "toolchain": "AC5",
       "compileConfig": {
         "cpuType": "Cortex-M3",

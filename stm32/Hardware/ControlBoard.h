@@ -16,6 +16,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* 外部函数声明 */
+extern uint32_t System_GetTick(void);
+
 /* 控制板通信配置 */
 #define CONTROL_BOARD_BAUDRATE          9600        // 控制板波特率
 #define CONTROL_BOARD_MAX_PACKET_SIZE   32          // 最大数据包大小
@@ -104,6 +107,11 @@ bool ControlBoard_Init(void);
  * @brief 反初始化控制板通信模块
  */
 void ControlBoard_DeInit(void);
+
+/**
+ * @brief USART2硬件测试
+ */
+void ControlBoard_HardwareTest(void);
 
 /**
  * @brief 控制单个舵机移动
