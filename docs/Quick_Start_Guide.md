@@ -19,8 +19,10 @@
 快速连线图:
 MaixCam Pin8(TX) ──→ STM32 PA10(RX)
 MaixCam Pin10(RX) ──→ STM32 PA9(TX)
-STM32 PA2(TX) ──→ 舵机总线
-5V电源 ──→ STM32 + 舵机
+STM32 PA2(TX) ──→ 控制板RX
+STM32 PA3(RX) ──→ 控制板TX
+控制板舵机总线 ──→ 串联舵机
+5V电源 ──→ STM32 + 控制板 + 舵机
 ```
 
 ### 启动测试 (1分钟)
@@ -52,17 +54,20 @@ STM32 PA2(TX) ──→ 舵机总线
                             └─────────────┘
 
 通信连接:
-┌─────────────┐             ┌─────────────┐
-│  MaixCam    │             │   STM32     │
-│  Pin8(TX)   │ ──────────→ │  PA10(RX)   │
-│  Pin10(RX)  │ ←────────── │  PA9(TX)    │
-│  GND        │ ──────────→ │  GND        │
-└─────────────┘             └─────────────┘
-                                   │
-                                   ↓ PA2(TX)
-                            ┌─────────────┐
-                            │  舵机总线    │
-                            └─────────────┘
+┌─────────────┐             ┌─────────────┐             ┌─────────────┐
+│  MaixCam    │             │   STM32     │             │   控制板     │
+│  Pin8(TX)   │ ──────────→ │  PA10(RX)   │             │             │
+│  Pin10(RX)  │ ←────────── │  PA9(TX)    │             │             │
+│  GND        │ ──────────→ │  GND        │             │             │
+└─────────────┘             │  PA2(TX)    │ ──────────→ │  RX         │
+                            │  PA3(RX)    │ ←────────── │  TX         │
+                            │  GND        │ ──────────→ │  GND        │
+                            └─────────────┘             └─────────────┘
+                                                               │
+                                                               ↓ 舵机总线
+                                                        ┌─────────────┐
+                                                        │  串联舵机    │
+                                                        └─────────────┘
 ```
 
 ### 第二步: 软件配置
@@ -70,9 +75,9 @@ STM32 PA2(TX) ──→ 舵机总线
    ```c
    // 确认配置参数
    #define USART1_BAUDRATE     115200  // MaixCam通信
-   #define USART2_BAUDRATE     115200  // 舵机通信
-   #define SERVO_ID_VERTICAL   1       // 垂直舵机ID
-   #define SERVO_ID_HORIZONTAL 2       // 水平舵机ID
+   #define USART2_BAUDRATE     9600    // 控制板通信
+   #define CONTROL_BOARD_SERVO_ID_VERTICAL   1    // 垂直舵机ID
+   #define CONTROL_BOARD_SERVO_ID_HORIZONTAL 2    // 水平舵机ID
    ```
 
 2. **MaixCam端**:
@@ -107,6 +112,7 @@ STM32 PA2(TX) ──→ 舵机总线
 2. **启动检查**:
    ```
    ✅ STM32 OLED显示正常
+   ✅ 控制板通信建立 (OLED显示"CtrlBoard OK")
    ✅ 舵机移动到中心位置
    ✅ MaixCam程序运行无错误
    ✅ 串口通信建立成功

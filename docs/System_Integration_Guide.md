@@ -2,28 +2,42 @@
 
 ## 系统概述
 
-本激光追踪系统由MaixCam图像处理端和STM32控制端组成，通过串口通信实现协同工作。
+本激光追踪系统采用三层架构：MaixCam图像处理端、STM32主控制端、控制板舵机控制端，通过串口通信实现协同工作。
+
+### 系统架构图
+```
+┌─────────────┐    图像处理    ┌─────────────┐    主控制    ┌─────────────┐    舵机控制    ┌─────────────┐
+│  MaixCam    │ ──────────→   │   STM32     │ ──────────→ │   控制板     │ ──────────→   │  串联舵机    │
+│  Pro        │ ←────────────  │  F103C8T6   │ ←────────── │             │ ←────────────  │             │
+└─────────────┘    位置数据    └─────────────┘    状态反馈  └─────────────┘    位置反馈    └─────────────┘
+```
 
 ## 硬件连接
 
 ### 1. MaixCam与STM32连接
 ```
 MaixCam UART  <-->  STM32 USART1
-Pin 8 (TX)    <-->  PA10 (RX)
-Pin 10 (RX)   <-->  PA9 (TX)
+Pin 8 (TX)    <-->  PA10 (RX)    [115200 baud]
+Pin 10 (RX)   <-->  PA9 (TX)     [115200 baud]
 GND           <-->  GND
 ```
 
-### 2. STM32与舵机连接
+### 2. STM32与控制板连接
 ```
-STM32 USART2  <-->  舵机总线
-PA2 (TX)      <-->  舵机信号线
-PA3 (RX)      <-->  舵机信号线
-GND           <-->  舵机GND
-5V            <-->  舵机VCC
+STM32 USART2  <-->  控制板串口
+PA2 (TX)      <-->  控制板 RX     [9600 baud]
+PA3 (RX)      <-->  控制板 TX     [9600 baud]
+GND           <-->  控制板 GND
 ```
 
-### 3. 舵机ID配置
+### 3. 控制板与舵机连接
+```
+控制板舵机总线  <-->  串联舵机
+舵机总线       <-->  舵机1 → 舵机2 (串联)
+电源 (6-12V)   <-->  舵机供电
+```
+
+### 4. 舵机ID配置
 - 垂直舵机: ID = 1
 - 水平舵机: ID = 2
 
@@ -50,7 +64,7 @@ GREEN_LASER_THRESHOLD = (30, 100, -64, -8, -32, 32)
 MIN_BLOB_AREA = 50
 
 # 通信参数
-UART_PORT = "/dev/ttyS1"
+UART_PORT = "/dev/ttyS0"
 UART_BAUDRATE = 115200
 
 # PID参数
@@ -74,7 +88,8 @@ arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -O2 -g -Wall -ffunction-sections -fdat
 #### 系统参数
 ```c
 // 通信参数
-#define SYSTEM_BAUDRATE             115200
+#define SYSTEM_BAUDRATE             115200      // MaixCam通信波特率
+#define CONTROL_BOARD_BAUDRATE      9600        // 控制板通信波特率
 #define SYSTEM_LOOP_FREQUENCY       50          // 50Hz控制频率
 #define HEARTBEAT_INTERVAL          1000        // 1秒心跳间隔
 
@@ -91,15 +106,17 @@ arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -O2 -g -Wall -ffunction-sections -fdat
 
 ### 1. 硬件检查
 - [ ] 确认所有硬件连接正确
-- [ ] 检查电源供应(5V舵机电源)
-- [ ] 验证串口连接
+- [ ] 检查电源供应(控制板6-12V电源)
+- [ ] 验证串口连接(MaixCam-STM32, STM32-控制板)
+- [ ] 确认舵机串联连接正确
 
 ### 2. STM32端启动
 1. 上电后系统自动初始化
 2. OLED显示"Laser Tracker Initializing..."
-3. 初始化通信、舵机、PID模块
-4. 舵机移动到中心位置(标定状态)
-5. OLED显示"State: CALIB"
+3. 初始化通信、控制板、PID模块
+4. 控制板通信建立后显示"CtrlBoard OK"
+5. 舵机移动到中心位置(标定状态)
+6. OLED显示"State: CALIB"
 
 ### 3. MaixCam端启动
 1. 运行主程序 `python main.py`

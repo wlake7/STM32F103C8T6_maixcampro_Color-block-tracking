@@ -13,7 +13,7 @@
 #include "LED.h"
 #include "Key.h"
 #include "Communication.h"
-#include "Servo.h"
+#include "ControlBoard.h"
 #include "PID.h"
 #include <stdio.h>
 #include <string.h>
@@ -101,9 +101,9 @@ static bool System_Init(void)
         return false;
     }
 
-    // 舵机控制模块初始化
-    if (!Servo_Init(SYSTEM_BAUDRATE)) {
-        OLED_ShowString(3, 1, "Servo Init Failed");
+    // 控制板通信模块初始化
+    if (!ControlBoard_Init()) {
+        OLED_ShowString(3, 1, "CtrlBoard Failed");
         return false;
     }
 
@@ -157,8 +157,8 @@ static void System_MainLoop(void)
     switch (g_system_state) {
         case SYSTEM_STATE_CALIBRATION:
             // 标定模式 - 舵机移动到中心位置
-            Servo_MoveToPosition(SERVO_ID_HORIZONTAL, SERVO_ANGLE_CENTER, 1000);
-            Servo_MoveToPosition(SERVO_ID_VERTICAL, SERVO_ANGLE_CENTER, 1000);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1000);
+            ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1000);
             break;
 
         case SYSTEM_STATE_TRACKING:
@@ -199,7 +199,7 @@ static void System_MainLoop(void)
 
     // 处理模块
     Communication_Process();
-    Servo_Process();
+    ControlBoard_Process();
     PID_Process();
 }
 
@@ -225,25 +225,27 @@ static void System_UpdateTracking(void)
     g_horizontal_output = PID_Compute(PID_TYPE_HORIZONTAL, horizontal_error);
     g_vertical_output = PID_Compute(PID_TYPE_VERTICAL, vertical_error);
 
-    // 将PID输出转换为舵机角度
-    ServoStatus_t* h_servo = Servo_GetStatus(SERVO_ID_HORIZONTAL);
-    ServoStatus_t* v_servo = Servo_GetStatus(SERVO_ID_VERTICAL);
+    // 将PID输出转换为舵机位置
+    static uint16_t current_h_position = 500;  // 水平舵机当前位置
+    static uint16_t current_v_position = 500;  // 垂直舵机当前位置
 
-    if (h_servo && v_servo) {
-        // 计算新的舵机角度 (基于当前角度调整)
-        uint16_t new_h_angle = h_servo->current_angle + (int16_t)(g_horizontal_output * 0.1f);
-        uint16_t new_v_angle = v_servo->current_angle + (int16_t)(g_vertical_output * 0.1f);
+    // 计算新的舵机位置 (基于当前位置调整)
+    int16_t new_h_position = current_h_position + (int16_t)(g_horizontal_output * 0.1f);
+    int16_t new_v_position = current_v_position + (int16_t)(g_vertical_output * 0.1f);
 
-        // 角度限制
-        if (new_h_angle > SERVO_ANGLE_MAX) new_h_angle = SERVO_ANGLE_MAX;
-        // new_h_angle是uint16_t类型，不会小于0，所以不需要检查下限
-        if (new_v_angle > SERVO_ANGLE_MAX) new_v_angle = SERVO_ANGLE_MAX;
-        // new_v_angle是uint16_t类型，不会小于0，所以不需要检查下限
+    // 位置限制 (0-1000)
+    if (new_h_position < 0) new_h_position = 0;
+    if (new_h_position > 1000) new_h_position = 1000;
+    if (new_v_position < 0) new_v_position = 0;
+    if (new_v_position > 1000) new_v_position = 1000;
 
-        // 控制舵机移动
-        Servo_MoveToPosition(SERVO_ID_HORIZONTAL, new_h_angle, 100);
-        Servo_MoveToPosition(SERVO_ID_VERTICAL, new_v_angle, 100);
-    }
+    // 更新当前位置
+    current_h_position = new_h_position;
+    current_v_position = new_v_position;
+
+    // 控制舵机移动
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, current_h_position, 100);
+    ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, current_v_position, 100);
 }
 
 /**
@@ -302,7 +304,7 @@ static void System_SendStatus(void)
 {
     SystemStatus_t status;
     status.system_ready = g_system_ready ? 1 : 0;
-    status.servo_status = 1; // 假设舵机正常
+    status.servo_status = ControlBoard_IsCommOK() ? 1 : 0; // 控制板通信状态
     status.tracking_mode = (uint8_t)g_system_state;
     status.error_code = 0;
 
@@ -323,9 +325,8 @@ static void System_HandleError(void)
         last_led_toggle = current_tick;
     }
 
-    // 停止所有舵机
-    Servo_StopMove(SERVO_ID_HORIZONTAL);
-    Servo_StopMove(SERVO_ID_VERTICAL);
+    // 停止所有动作组
+    ControlBoard_StopActionGroup();
 
     // 禁用PID控制器
     PID_Enable(PID_TYPE_HORIZONTAL, false);
@@ -366,23 +367,23 @@ static void Communication_DataHandler(CommCommand_t cmd, uint8_t* data, uint8_t 
 {
     switch (cmd) {
         case CMD_TARGET_POSITION:
-            if (length >= 8) {
-                // 解析目标位置数据
+            if (length >= 16) {
+                // 解析目标位置数据 (前8字节)
                 g_target_position.x = data[0] | (data[1] << 8);
                 g_target_position.y = data[2] | (data[3] << 8);
                 g_target_position.confidence = data[4] | (data[5] << 8);
                 g_target_position.timestamp = data[6] | (data[7] << 8);
+
+                // 解析激光位置数据 (后8字节)
+                g_laser_position.x = data[8] | (data[9] << 8);
+                g_laser_position.y = data[10] | (data[11] << 8);
+                g_laser_position.confidence = data[12] | (data[13] << 8);
+                g_laser_position.timestamp = data[14] | (data[15] << 8);
             }
             break;
 
         case CMD_LASER_POSITION:
-            if (length >= 8) {
-                // 解析激光位置数据
-                g_laser_position.x = data[0] | (data[1] << 8);
-                g_laser_position.y = data[2] | (data[3] << 8);
-                g_laser_position.confidence = data[4] | (data[5] << 8);
-                g_laser_position.timestamp = data[6] | (data[7] << 8);
-            }
+            // 激光位置数据已包含在CMD_TARGET_POSITION中，此命令保留备用
             break;
 
         case CMD_PID_PARAMS:

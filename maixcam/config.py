@@ -20,17 +20,17 @@ class Config:
 
         # 红色目标检测参数 (LAB色彩空间)
         self.red_target_threshold = [
-            [30, 100, 15, 127, 15, 127]  # 红色LAB阈值
+            [0, 60, 0, 127, -128, -35]  # 红色LAB阈值
         ]
         self.red_target_min_pixels = 100
         self.red_target_min_area = 200
 
         # 绿色激光检测参数 (LAB色彩空间)
         self.green_laser_threshold = [
-            [30, 100, -64, -8, -32, 32]  # 绿色LAB阈值
+            [0, 80, -120, -10, 0, 30]  # 绿色LAB阈值
         ]
-        self.green_laser_min_pixels = 20
-        self.green_laser_min_area = 50
+        self.green_laser_min_pixels = 30
+        self.green_laser_min_area = 60
 
         # 图像矫正参数
         self.correction_enabled = True
