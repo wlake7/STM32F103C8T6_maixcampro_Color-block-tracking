@@ -7,7 +7,7 @@
 
 #include "ControlBoard.h"
 #include <string.h>
-#include "usart.h"
+//#include "usart.h"
 #include <string.h>
 
 /* 全局变量定义 */

@@ -1,14 +1,16 @@
 """
 通信模块
 实现与STM32的串口通信协议
+参考comm_protocol_yolov5.py的实现方法
 """
 
 import struct
 import time
-from maix import uart
+from maix import comm, protocol
+from maix.err import Err
 
 class Communication:
-    """通信管理器"""
+    """通信管理器 - 基于MaixPy CommProtocol实现"""
 
     # 命令定义
     CMD_TARGET_POSITION = 0x01
@@ -20,23 +22,34 @@ class Communication:
     def __init__(self, config):
         """初始化通信模块"""
         self.config = config
-        self.uart_port = None
+        self.comm_protocol = None
         self.is_connected = False
-
-        # 协议参数
-        self.header = config.protocol_header  # [0xAA, 0x55]
-        self.max_packet_size = config.max_packet_size
 
         # 统计信息
         self.sent_packets = 0
         self.failed_packets = 0
 
-        # 初始化串口
-        self.init_uart()
+        # 初始化通信协议
+        self.init_comm_protocol()
 
-    def init_uart(self):
-        """初始化串口连接"""
+    def init_comm_protocol(self):
+        """初始化通信协议"""
         try:
+            # 使用MaixPy内置的CommProtocol，自动处理串口初始化
+            # 根据系统配置自动选择串口或TCP
+            self.comm_protocol = comm.CommProtocol(buff_size=1024)
+            self.is_connected = True
+            print("通信协议初始化成功")
+        except Exception as e:
+            print(f"通信协议初始化失败: {e}")
+            self.is_connected = False
+            # 如果CommProtocol失败，尝试回退到原始uart方法
+            self._fallback_to_uart()
+
+    def _fallback_to_uart(self):
+        """回退到原始uart方法"""
+        try:
+            from maix import uart
             self.uart_port = uart.UART(
                 self.config.uart_port,
                 self.config.uart_baudrate,
@@ -44,9 +57,10 @@ class Communication:
                 timeout=self.config.uart_timeout
             )
             self.is_connected = True
-            print(f"串口连接成功: {self.config.uart_port}@{self.config.uart_baudrate}")
+            self.comm_protocol = None  # 标记使用uart模式
+            print(f"回退到UART模式成功: {self.config.uart_port}@{self.config.uart_baudrate}")
         except Exception as e:
-            print(f"串口连接失败: {e}")
+            print(f"UART回退也失败: {e}")
             self.is_connected = False
 
     def calculate_checksum(self, data):
@@ -73,43 +87,108 @@ class Communication:
 
     def send_packet(self, packet):
         """发送数据包"""
-        if not self.is_connected or not self.uart_port:
-            print("串口未连接，无法发送数据")
+        if not self.is_connected:
+            print("通信未连接，无法发送数据")
             self.failed_packets += 1
             return False
 
         try:
-            self.uart_port.write(packet)
-            self.sent_packets += 1
-            return True
+            if self.comm_protocol:
+                # 使用CommProtocol发送
+                # 这里需要将packet转换为CommProtocol格式
+                return self._send_via_comm_protocol(packet)
+            elif hasattr(self, 'uart_port') and self.uart_port:
+                # 使用原始UART发送
+                self.uart_port.write(packet)
+                self.sent_packets += 1
+                return True
+            else:
+                print("没有可用的通信方式")
+                return False
         except Exception as e:
             print(f"数据发送失败: {e}")
             self.failed_packets += 1
             return False
+
+    def _send_via_comm_protocol(self, packet):
+        """通过CommProtocol发送数据"""
+        try:
+            # 解析原始packet格式: [header1, header2, length, cmd, data..., checksum]
+            if len(packet) < 5:
+                return False
+
+            cmd = packet[3]  # 命令字节
+            data_length = packet[2]  # 数据长度
+
+            if data_length > 0 and len(packet) >= 5 + data_length:
+                data = packet[4:4+data_length]  # 提取数据部分
+            else:
+                data = b''
+
+            # 使用CommProtocol的report方法发送
+            result = self.comm_protocol.report(cmd, data)
+            if result == Err.ERR_NONE:
+                self.sent_packets += 1
+                return True
+            else:
+                print(f"CommProtocol发送失败: {result}")
+                return False
+
+        except Exception as e:
+            print(f"CommProtocol发送异常: {e}")
+            return False
+
+    def encode_position_data(self, target_pos, laser_pos):
+        """编码位置数据为字节流"""
+        # 参考comm_protocol_yolov5.py的encode_objs方法
+        # 格式: target_x(2B) + target_y(2B) + laser_x(2B) + laser_y(2B) + confidence(2B) + timestamp(2B)
+        data = struct.pack("<hhhhHH",
+                          int(target_pos[0]), int(target_pos[1]),  # 目标位置
+                          int(laser_pos[0]), int(laser_pos[1]),    # 激光位置
+                          100,  # 置信度 (固定100)
+                          int(time.time() * 1000) & 0xFFFF)       # 时间戳 (低16位)
+        return data
 
     def send_position_data(self, target_pos, laser_pos):
         """发送位置数据"""
         if not target_pos or not laser_pos:
             return False
 
-        # 打包位置数据 (每个坐标2字节，置信度2字节，时间戳2字节)
-        data = []
+        try:
+            if self.comm_protocol:
+                # 使用CommProtocol方式发送
+                data = self.encode_position_data(target_pos, laser_pos)
+                result = self.comm_protocol.report(self.CMD_TARGET_POSITION, data)
+                if result == Err.ERR_NONE:
+                    self.sent_packets += 1
+                    return True
+                else:
+                    print(f"位置数据发送失败: {result}")
+                    return False
+            else:
+                # 使用原始UART方式发送
+                # 打包位置数据 (每个坐标2字节，置信度2字节，时间戳2字节)
+                data = []
 
-        # 目标位置数据 (8字节)
-        data.extend(struct.pack('<H', int(target_pos[0])))  # X坐标
-        data.extend(struct.pack('<H', int(target_pos[1])))  # Y坐标
-        data.extend(struct.pack('<H', 100))                 # 置信度 (固定100)
-        data.extend(struct.pack('<H', int(time.time() * 1000) & 0xFFFF))  # 时间戳
+                # 目标位置数据 (8字节)
+                data.extend(struct.pack('<H', int(target_pos[0])))  # X坐标
+                data.extend(struct.pack('<H', int(target_pos[1])))  # Y坐标
+                data.extend(struct.pack('<H', 100))                 # 置信度 (固定100)
+                data.extend(struct.pack('<H', int(time.time() * 1000) & 0xFFFF))  # 时间戳
 
-        # 激光位置数据 (8字节)
-        data.extend(struct.pack('<H', int(laser_pos[0])))   # X坐标
-        data.extend(struct.pack('<H', int(laser_pos[1])))   # Y坐标
-        data.extend(struct.pack('<H', 100))                 # 置信度 (固定100)
-        data.extend(struct.pack('<H', int(time.time() * 1000) & 0xFFFF))  # 时间戳
+                # 激光位置数据 (8字节)
+                data.extend(struct.pack('<H', int(laser_pos[0])))   # X坐标
+                data.extend(struct.pack('<H', int(laser_pos[1])))   # Y坐标
+                data.extend(struct.pack('<H', 100))                 # 置信度 (固定100)
+                data.extend(struct.pack('<H', int(time.time() * 1000) & 0xFFFF))  # 时间戳
 
-        # 创建并发送数据包
-        packet = self.create_packet(self.CMD_TARGET_POSITION, data)
-        return self.send_packet(packet)
+                # 创建并发送数据包
+                packet = self.create_packet(self.CMD_TARGET_POSITION, data)
+                return self.send_packet(packet)
+
+        except Exception as e:
+            print(f"发送位置数据异常: {e}")
+            return False
 
     def send_pid_params(self, kp_h, ki_h, kd_h, kp_v, ki_v, kd_v):
         """发送PID参数"""
@@ -203,13 +282,16 @@ class Communication:
     def close(self):
         """关闭通信连接"""
         try:
-            if self.uart_port:
+            if self.comm_protocol:
+                # CommProtocol会自动处理资源释放
+                self.comm_protocol = None
+            if hasattr(self, 'uart_port') and self.uart_port:
                 self.uart_port.close()
                 self.uart_port = None
             self.is_connected = False
-            print("串口连接已关闭")
+            print("通信连接已关闭")
         except Exception as e:
-            print(f"关闭串口时发生错误: {e}")
+            print(f"关闭通信时发生错误: {e}")
 
     def get_communication_stats(self):
         """获取通信统计信息"""

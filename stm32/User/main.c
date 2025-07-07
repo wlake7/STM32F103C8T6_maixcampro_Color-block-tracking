@@ -62,6 +62,7 @@ static void System_ProcessKeys(void);
 static void Communication_DataHandler(CommCommand_t cmd, uint8_t* data, uint8_t length);
 static uint32_t System_GetTick(void);
 static void System_Delay(uint32_t ms);
+static void System_TestServoMotors(void);
 
 /**
  * @brief 主函数
@@ -167,7 +168,8 @@ static void System_MainLoop(void)
             break;
 
         case SYSTEM_STATE_MANUAL:
-            // 手动控制模式
+            // 手动控制模式 - 可以在这里调用舵机测试
+            System_TestServoMotors();
             break;
 
         case SYSTEM_STATE_ERROR:
@@ -338,7 +340,9 @@ static void System_HandleError(void)
  */
 static void System_ProcessKeys(void)
 {
-    if (Key_GetNum() == 1) {
+    uint8_t key_num = Key_GetNum();
+
+    if (key_num == 1) {
         // 按键1: 切换系统状态
         switch (g_system_state) {
             case SYSTEM_STATE_CALIBRATION:
@@ -357,6 +361,10 @@ static void System_ProcessKeys(void)
             default:
                 break;
         }
+    }
+    else if (key_num == 2) {
+        // 按键2: 启动舵机测试
+        System_TestServoMotors();
     }
 }
 
@@ -434,4 +442,125 @@ static uint32_t System_GetTick(void)
 static void System_Delay(uint32_t ms)
 {
     Delay_ms(ms);
+}
+
+/**
+ * @brief 舵机电机测试函数
+ * 让两个舵机循环运动，检测是否能正常控制电机
+ */
+static void System_TestServoMotors(void)
+{
+    static bool test_running = false;
+    static uint32_t test_start_time = 0;
+    static uint8_t test_step = 0;
+    uint32_t current_time = System_GetTick();
+
+    // 如果测试未开始，启动测试
+    if (!test_running) {
+        test_running = true;
+        test_start_time = current_time;
+        test_step = 0;
+
+        // 显示测试开始信息
+        OLED_ShowString(3, 1, "Servo Test Start");
+        OLED_ShowString(4, 1, "Press Key2 Stop ");
+
+        // LED指示测试状态
+        LED_On();
+
+        printf("开始舵机测试...\r\n");
+        return;
+    }
+
+    // 检查是否按键停止测试
+    if (Key_GetNum() == 2) {
+        test_running = false;
+        LED_Off();
+        OLED_ShowString(3, 1, "Servo Test Stop ");
+        OLED_ShowString(4, 1, "               ");
+        printf("舵机测试停止\r\n");
+
+        // 舵机回到中心位置
+        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1000);
+        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1000);
+        return;
+    }
+
+    // 测试循环 - 每2秒切换一个动作
+    uint32_t elapsed_time = current_time - test_start_time;
+    uint8_t current_step = (elapsed_time / 2000) % 8;  // 8个步骤循环
+
+    if (current_step != test_step) {
+        test_step = current_step;
+
+        switch (test_step) {
+            case 0:
+                // 水平舵机向左，垂直舵机中心
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+                printf("舵机测试: 水平左, 垂直中\r\n");
+                break;
+
+            case 1:
+                // 水平舵机向右，垂直舵机中心
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+                printf("舵机测试: 水平右, 垂直中\r\n");
+                break;
+
+            case 2:
+                // 水平舵机中心，垂直舵机向上
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+                printf("舵机测试: 水平中, 垂直上\r\n");
+                break;
+
+            case 3:
+                // 水平舵机中心，垂直舵机向下
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+                printf("舵机测试: 水平中, 垂直下\r\n");
+                break;
+
+            case 4:
+                // 左上角
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+                printf("舵机测试: 左上角\r\n");
+                break;
+
+            case 5:
+                // 右上角
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
+                printf("舵机测试: 右上角\r\n");
+                break;
+
+            case 6:
+                // 右下角
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+                printf("舵机测试: 右下角\r\n");
+                break;
+
+            case 7:
+                // 左下角
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+                ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
+                printf("舵机测试: 左下角\r\n");
+                break;
+        }
+
+        // 更新OLED显示当前步骤
+        char step_str[16];
+        sprintf(step_str, "Step: %d/8      ", test_step + 1);
+        OLED_ShowString(4, 1, step_str);
+
+        // LED闪烁指示
+        if (test_step % 2 == 0) {
+            LED_On();
+        } else {
+            LED_Off();
+        }
+    }
 }
