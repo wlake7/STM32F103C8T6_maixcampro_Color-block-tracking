@@ -431,9 +431,15 @@ static void Communication_DataHandler(CommCommand_t cmd, uint8_t* data, uint8_t 
  */
 static uint32_t System_GetTick(void)
 {
-    // 这里应该返回系统时钟，暂时使用简单计数器
-    static uint32_t tick_counter = 0;
-    return tick_counter++;
+    // 使用SysTick计数器获取毫秒时间
+    // 假设系统时钟72MHz，SysTick配置为1ms中断
+    static uint32_t tick_ms = 0;
+    static uint32_t last_systick = 0;
+    uint32_t current_systick = SysTick->VAL;
+
+    // 简化实现：每次调用增加主循环周期时间
+    tick_ms += SYSTEM_LOOP_PERIOD;  // 20ms (50Hz主循环)
+    return tick_ms;
 }
 
 /**
@@ -469,6 +475,11 @@ static void System_TestServoMotors(void)
         LED1_ON();
 
         printf("Servo test started...\r\n");
+
+        // 立即执行第一个测试步骤
+        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
+        ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
+        printf("Servo test: H-Left, V-Center\r\n");
         return;
     }
 
