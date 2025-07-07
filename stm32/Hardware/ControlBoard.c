@@ -7,8 +7,7 @@
 
 #include "ControlBoard.h"
 #include <string.h>
-//#include "usart.h"
-#include <string.h>
+#include "stm32f10x.h"
 
 /* 全局变量定义 */
 ControlBoardSystem_t g_control_board_system = {0};
@@ -21,6 +20,8 @@ static uint32_t last_receive_time = 0;
 static uint32_t last_send_time = 0;
 
 /* 私有函数声明 */
+static void ControlBoard_USART2_Init(void);
+static void ControlBoard_SendByte(uint8_t data);
 static bool ControlBoard_SendPacket(uint8_t command, uint8_t* data, uint8_t data_len);
 static bool ControlBoard_WaitResponse(uint8_t expected_cmd, uint32_t timeout_ms);
 static void ControlBoard_ParsePacket(uint8_t* packet, uint8_t length);
@@ -33,11 +34,10 @@ bool ControlBoard_Init(void)
 {
     // 清零系统状态
     memset(&g_control_board_system, 0, sizeof(ControlBoardSystem_t));
-    
+
     // 初始化USART2用于控制板通信 (9600波特率)
-    // 注意: 这里需要根据实际硬件配置修改USART初始化
-    // USART2_Init(CONTROL_BOARD_BAUDRATE);
-    
+    ControlBoard_USART2_Init();
+
     // 设置初始状态
     g_control_board_system.state = CONTROL_BOARD_STATE_IDLE;
     g_control_board_system.initialized = true;
@@ -62,6 +62,51 @@ void ControlBoard_DeInit(void)
     g_control_board_system.initialized = false;
     g_control_board_system.state = CONTROL_BOARD_STATE_IDLE;
     CONTROL_BOARD_DEBUG("Control Board deinitialized");
+}
+
+/**
+ * @brief 初始化USART2用于控制板通信
+ */
+static void ControlBoard_USART2_Init(void)
+{
+    GPIO_InitTypeDef GPIO_InitStructure;
+    USART_InitTypeDef USART_InitStructure;
+
+    // 使能GPIOA和USART2时钟
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
+
+    // 配置PA2 (TX) 为推挽复用输出
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+    // 配置PA3 (RX) 为浮空输入
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+    // 配置USART参数
+    USART_InitStructure.USART_BaudRate = CONTROL_BOARD_BAUDRATE;
+    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
+    USART_InitStructure.USART_StopBits = USART_StopBits_1;
+    USART_InitStructure.USART_Parity = USART_Parity_No;
+    USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+    USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+    USART_Init(USART2, &USART_InitStructure);
+
+    // 使能USART
+    USART_Cmd(USART2, ENABLE);
+}
+
+/**
+ * @brief 发送单个字节到控制板
+ */
+static void ControlBoard_SendByte(uint8_t data)
+{
+    while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
+    USART_SendData(USART2, data);
 }
 
 /**
@@ -347,8 +392,9 @@ static bool ControlBoard_SendPacket(uint8_t command, uint8_t* data, uint8_t data
     }
 
     // 发送数据包
-    // 注意: 这里需要根据实际USART发送函数修改
-    // USART2_SendData(packet, packet_len);
+    for (uint8_t i = 0; i < packet_len; i++) {
+        ControlBoard_SendByte(packet[i]);
+    }
 
     last_send_time = ControlBoard_GetTick();
     g_control_board_system.state = CONTROL_BOARD_STATE_BUSY;

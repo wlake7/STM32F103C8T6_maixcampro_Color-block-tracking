@@ -155,7 +155,7 @@ static void System_MainLoop(void)
     System_ProcessKeys();
 
     // 根据系统状态执行相应逻辑
-    switch (SYSTEM_STATE_CALIBRATION) {
+    switch (g_system_state) {
         case SYSTEM_STATE_CALIBRATION:
             // 标定模式 - 舵机移动到中心位置
             ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1000);
