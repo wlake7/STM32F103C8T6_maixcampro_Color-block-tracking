@@ -466,19 +466,19 @@ static void System_TestServoMotors(void)
         OLED_ShowString(4, 1, "Press Key2 Stop ");
 
         // LED指示测试状态
-        LED_On();
+        LED1_ON();
 
-        printf("开始舵机测试...\r\n");
+        printf("Servo test started...\r\n");
         return;
     }
 
     // 检查是否按键停止测试
     if (Key_GetNum() == 2) {
         test_running = false;
-        LED_Off();
+        LED1_OFF();
         OLED_ShowString(3, 1, "Servo Test Stop ");
         OLED_ShowString(4, 1, "               ");
-        printf("舵机测试停止\r\n");
+        printf("Servo test stopped\r\n");
 
         // 舵机回到中心位置
         ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1000);
@@ -498,56 +498,56 @@ static void System_TestServoMotors(void)
                 // 水平舵机向左，垂直舵机中心
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
-                printf("舵机测试: 水平左, 垂直中\r\n");
+                printf("Servo test: H-Left, V-Center\r\n");
                 break;
 
             case 1:
                 // 水平舵机向右，垂直舵机中心
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 500, 1500);
-                printf("舵机测试: 水平右, 垂直中\r\n");
+                printf("Servo test: H-Right, V-Center\r\n");
                 break;
 
             case 2:
                 // 水平舵机中心，垂直舵机向上
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
-                printf("舵机测试: 水平中, 垂直上\r\n");
+                printf("Servo test: H-Center, V-Up\r\n");
                 break;
 
             case 3:
                 // 水平舵机中心，垂直舵机向下
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 500, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
-                printf("舵机测试: 水平中, 垂直下\r\n");
+                printf("Servo test: H-Center, V-Down\r\n");
                 break;
 
             case 4:
                 // 左上角
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
-                printf("舵机测试: 左上角\r\n");
+                printf("Servo test: Top-Left\r\n");
                 break;
 
             case 5:
                 // 右上角
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 200, 1500);
-                printf("舵机测试: 右上角\r\n");
+                printf("Servo test: Top-Right\r\n");
                 break;
 
             case 6:
                 // 右下角
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 800, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
-                printf("舵机测试: 右下角\r\n");
+                printf("Servo test: Bottom-Right\r\n");
                 break;
 
             case 7:
                 // 左下角
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_HORIZONTAL, 200, 1500);
                 ControlBoard_MoveServo(CONTROL_BOARD_SERVO_ID_VERTICAL, 800, 1500);
-                printf("舵机测试: 左下角\r\n");
+                printf("Servo test: Bottom-Left\r\n");
                 break;
         }
 
@@ -558,9 +558,9 @@ static void System_TestServoMotors(void)
 
         // LED闪烁指示
         if (test_step % 2 == 0) {
-            LED_On();
+            LED1_ON();
         } else {
-            LED_Off();
+            LED1_OFF();
         }
     }
 }
