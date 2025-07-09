@@ -37,7 +37,7 @@ class Config:
         self.corner_points = []  # 四个角点坐标，在标定时设置
 
         # 通信配置
-        self.uart_port = "/dev/ttyS0"  # 根据实际硬件调整
+        self.uart_port = ""  # 空字符串表示自动检测，或使用uart.list_devices()获取
         self.uart_baudrate = 115200
         self.uart_timeout = 0.1
 
