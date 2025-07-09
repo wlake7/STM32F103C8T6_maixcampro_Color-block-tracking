@@ -1,4 +1,34 @@
 #include "stm32f10x.h"
+#include "Timer.h"
+
+/**
+  * @brief  系统时钟获取函数
+  * @param  无
+  * @retval 当前系统毫秒计数
+  *
+  * 修改说明：
+  * - 改为调用Timer模块的Timer_GetSystemTick()
+  * - 时间基准从SysTick改为TIM1
+  */
+uint32_t System_GetTick(void)
+{
+    return Timer_GetSystemTick();
+}
+
+/**
+  * @brief  SysTick中断处理函数
+  * @param  无
+  * @retval 无
+  *
+  * 修改说明：
+  * - 移除时间计数功能，SysTick专用于延时
+  * - 系统时间计数由TIM1负责
+  */
+void SysTick_Handler(void)
+{
+    // SysTick现在专用于延时功能，不再计数系统时间
+    // 系统时间由Timer模块的TIM1负责
+}
 
 /**
   * @brief  微秒级延时

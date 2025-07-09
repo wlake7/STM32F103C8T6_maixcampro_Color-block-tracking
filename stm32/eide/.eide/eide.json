@@ -183,6 +183,12 @@
           },
           {
             "path": "../System/Delay.h"
+          },
+          {
+            "path": "../System/Timer.c"
+          },
+          {
+            "path": "../System/Timer.h"
           }
         ],
         "folders": []
@@ -191,43 +197,31 @@
         "name": "Hardware",
         "files": [
           {
-            "path": "../Hardware/LED.c"
+            "path": "../Hardware/CameraComm.c"
           },
           {
-            "path": "../Hardware/LED.h"
+            "path": "../Hardware/CameraComm.h"
           },
           {
-            "path": "../Hardware/Key.c"
+            "path": "../Hardware/PIDController.c"
           },
           {
-            "path": "../Hardware/Key.h"
+            "path": "../Hardware/PIDController.h"
           },
           {
-            "path": "../Hardware/OLED.c"
+            "path": "../Hardware/ServoBoard.c"
           },
           {
-            "path": "../Hardware/OLED.h"
+            "path": "../Hardware/ServoBoard.h"
           },
           {
-            "path": "../Hardware/OLED_Font.h"
+            "path": "../Hardware/LaserTracker.c"
           },
           {
-            "path": "../Hardware/Communication.c"
+            "path": "../Hardware/LaserTracker.h"
           },
           {
-            "path": "../Hardware/Communication.h"
-          },
-          {
-            "path": "../Hardware/PID.c"
-          },
-          {
-            "path": "../Hardware/PID.h"
-          },
-          {
-            "path": "../Hardware/ControlBoard.c"
-          },
-          {
-            "path": "../Hardware/ControlBoard.h"
+            "path": "../Hardware/ServoControl.h"
           }
         ],
         "folders": []

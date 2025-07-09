@@ -24,6 +24,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f10x_it.h"
 
+/* External interrupt handlers from modules */
+extern void TIM1_UP_IRQHandler(void);  // Timer1中断 (Timer.c)
+extern void USART1_IRQHandler(void);   // 摄像头通信中断 (main.c)
+
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
   */
@@ -132,9 +136,7 @@ void PendSV_Handler(void)
   * @param  None
   * @retval None
   */
-void SysTick_Handler(void)
-{
-}
+// SysTick_Handler现在在Delay.c中实现
 
 /******************************************************************************/
 /*                 STM32F10x Peripherals Interrupt Handlers                   */
