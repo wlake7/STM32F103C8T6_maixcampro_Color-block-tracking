@@ -102,19 +102,18 @@ void LaserTracker_Process(void)
         float error_y = (float)g_laser_tracker.target_pos.y - (float)g_laser_tracker.laser_pos.y;
 
         // 添加死区处理，避免小误差引起抖动
-        if (fabs(error_x) < 5.0f) error_x = 0.0f;
-        if (fabs(error_y) < 5.0f) error_y = 0.0f;
+        if (fabs(error_x) < DEADZONE_PIXELS) error_x = 0.0f;
+        if (fabs(error_y) < DEADZONE_PIXELS) error_y = 0.0f;
 
         // 简单比例控制（参考成功案例，只用P控制）
-        // 控制系数0.1，根据实际效果调整
-        float h_increment = error_x * 0.1f;
-        float v_increment = error_y * 0.1f;
+        float h_increment = error_x * CONTROL_GAIN;
+        float v_increment = error_y * CONTROL_GAIN;
 
         // 限制单次增量，防止过大跳跃
-        if (h_increment > 20.0f) h_increment = 20.0f;
-        if (h_increment < -20.0f) h_increment = -20.0f;
-        if (v_increment > 20.0f) v_increment = 20.0f;
-        if (v_increment < -20.0f) v_increment = -20.0f;
+        if (h_increment > MAX_INCREMENT) h_increment = MAX_INCREMENT;
+        if (h_increment < -MAX_INCREMENT) h_increment = -MAX_INCREMENT;
+        if (v_increment > MAX_INCREMENT) v_increment = MAX_INCREMENT;
+        if (v_increment < -MAX_INCREMENT) v_increment = -MAX_INCREMENT;
 
         // 更新舵机位置（增量控制）
         int16_t new_h_pos = (int16_t)g_laser_tracker.servo_h_pos + (int16_t)h_increment;

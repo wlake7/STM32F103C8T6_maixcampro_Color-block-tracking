@@ -56,9 +56,9 @@ typedef struct {
 #define SERVO_POS_CENTER    500
 
 /* 控制参数 */
-#define CONTROL_GAIN        0.1f        // 比例控制增益
-#define DEADZONE_PIXELS     5.0f        // 死区像素数
-#define MAX_INCREMENT       20.0f       // 最大单次增量
+#define CONTROL_GAIN        0.05f       // 比例控制增益（参考成功案例0.03）
+#define DEADZONE_PIXELS     3.0f        // 死区像素数
+#define MAX_INCREMENT       10.0f       // 最大单次增量
 
 /* 函数声明 */
 bool LaserTracker_Init(void);                   // 初始化激光追踪系统

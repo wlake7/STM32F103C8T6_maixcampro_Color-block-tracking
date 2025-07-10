@@ -34,7 +34,7 @@
 #define MODE_DEBUG          6   // 调试模式 (预留)
 
 /* 当前运行模式 */
-#define CURRENT_MODE       MODE_CONTROL_TEST
+#define CURRENT_MODE       MODE_LASER_TRACK
 /* 舵机控制板协议常量 */
 #define SERVO_HEADER1       0x55
 #define SERVO_HEADER2       0x55
