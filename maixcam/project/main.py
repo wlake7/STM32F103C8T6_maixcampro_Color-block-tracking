@@ -114,7 +114,7 @@ def run_camera_test():
 
     try:
         from maix import image
-        from image_processor import ImageProcessor
+        from maixcam.项目代码.image_processor import ImageProcessor
         config = Config()
 
         processor = ImageProcessor(config)
