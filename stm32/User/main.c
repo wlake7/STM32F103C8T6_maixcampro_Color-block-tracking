@@ -30,10 +30,11 @@
 #define MODE_LASER_TRACK    2   // 激光追踪模式
 #define MODE_COMM_DEBUG     3   // 通信调试模式
 #define MODE_SERVO_DEBUG    4   // 舵机专项调试模式
-#define MODE_DEBUG          5   // 调试模式 (预留)
+#define MODE_CONTROL_TEST   5   // 控制方向测试模式
+#define MODE_DEBUG          6   // 调试模式 (预留)
 
 /* 当前运行模式 */
-#define CURRENT_MODE       MODE_LASER_TRACK
+#define CURRENT_MODE       MODE_CONTROL_TEST
 /* 舵机控制板协议常量 */
 #define SERVO_HEADER1       0x55
 #define SERVO_HEADER2       0x55
@@ -86,6 +87,9 @@ static void CommDebug_Init(void);
 #elif CURRENT_MODE == MODE_SERVO_DEBUG
 static void ServoDebug_Process(void);
 static void ServoDebug_Init(void);
+#elif CURRENT_MODE == MODE_CONTROL_TEST
+static void ControlTest_Process(void);
+static void ControlTest_Init(void);
 #endif
 
 /**
@@ -176,6 +180,24 @@ int main(void)
         Delay_ms(1000);  // 1Hz主循环，便于观察
     }
 
+#elif CURRENT_MODE == MODE_CONTROL_TEST
+    // 控制方向测试初始化
+    ControlTest_Init();
+
+    // 主循环
+    while (1) {
+        ControlTest_Process();
+
+        // LED心跳指示
+        static uint32_t last_led_time = 0;
+        if ((System_GetTick() - last_led_time) > 1000) {
+            last_led_time = System_GetTick();
+            LED_Toggle();
+        }
+
+        Delay_ms(2000);  // 2秒一次测试
+    }
+
 #endif
 
     return 0;
@@ -220,6 +242,8 @@ static void System_Init(void)
     OLED_ShowString(3, 7, "COMM_DEBUG");
 #elif CURRENT_MODE == MODE_SERVO_DEBUG
     OLED_ShowString(3, 7, "SERVO_DEBUG");
+#elif CURRENT_MODE == MODE_CONTROL_TEST
+    OLED_ShowString(3, 7, "CTRL_TEST");
 #endif
 
     g_system_initialized = 1;
@@ -654,6 +678,110 @@ static void ServoDebug_Process(void)
 
     // LED闪烁指示活动
     LED_SetState(1);
+}
+
+#endif
+
+#if CURRENT_MODE == MODE_CONTROL_TEST
+
+/* 控制测试相关变量 */
+static uint32_t g_control_test_step = 0;
+
+/**
+ * @brief 控制方向测试初始化
+ */
+static void ControlTest_Init(void)
+{
+    // OLED显示测试模式信息
+    OLED_Clear();
+    OLED_ShowString(1, 1, "CONTROL TEST");
+    OLED_ShowString(2, 1, "Testing direction");
+    OLED_ShowString(3, 1, "Step: 0");
+    OLED_ShowString(4, 1, "Watch laser move");
+
+    // 初始化激光追踪系统
+    LaserTracker_Init();
+
+    // 舵机回到中心位置
+    ServoBoard_ReturnToCenter();
+    Delay_ms(2000);
+
+    g_control_test_step = 0;
+
+    // LED指示初始化完成
+    LED_SetState(1);
+    Delay_ms(200);
+    LED_SetState(0);
+}
+
+/**
+ * @brief 控制方向测试处理函数
+ * 模拟不同的目标和激光位置，观察舵机移动方向是否正确
+ */
+static void ControlTest_Process(void)
+{
+    // 更新OLED显示
+    OLED_ShowString(3, 1, "Step:");
+    OLED_ShowNum(3, 6, g_control_test_step, 2);
+
+    switch (g_control_test_step) {
+        case 0:
+            // 测试1：激光在左，目标在右，舵机应该向右移动
+            OLED_ShowString(2, 1, "Test: L->R     ");
+            LaserTracker_UpdateLaserPosition(200, 240);   // 激光在左边
+            LaserTracker_UpdateTargetPosition(400, 240);  // 目标在右边
+            break;
+
+        case 1:
+            // 测试2：激光在右，目标在左，舵机应该向左移动
+            OLED_ShowString(2, 1, "Test: R->L     ");
+            LaserTracker_UpdateLaserPosition(400, 240);   // 激光在右边
+            LaserTracker_UpdateTargetPosition(200, 240);  // 目标在左边
+            break;
+
+        case 2:
+            // 测试3：激光在上，目标在下，舵机应该向下移动
+            OLED_ShowString(2, 1, "Test: U->D     ");
+            LaserTracker_UpdateLaserPosition(320, 150);   // 激光在上边
+            LaserTracker_UpdateTargetPosition(320, 350);  // 目标在下边
+            break;
+
+        case 3:
+            // 测试4：激光在下，目标在上，舵机应该向上移动
+            OLED_ShowString(2, 1, "Test: D->U     ");
+            LaserTracker_UpdateLaserPosition(320, 350);   // 激光在下边
+            LaserTracker_UpdateTargetPosition(320, 150);  // 目标在上边
+            break;
+
+        case 4:
+            // 测试5：回到中心
+            OLED_ShowString(2, 1, "Test: CENTER   ");
+            LaserTracker_UpdateLaserPosition(320, 240);   // 激光在中心
+            LaserTracker_UpdateTargetPosition(320, 240);  // 目标在中心
+            break;
+
+        default:
+            // 重新开始
+            g_control_test_step = 0;
+            return;
+    }
+
+    // 激活追踪
+    LaserTracker_SetActive(true);
+
+    // 执行追踪处理
+    LaserTracker_Process();
+
+    // 下一步
+    g_control_test_step++;
+    if (g_control_test_step > 4) {
+        g_control_test_step = 0;
+    }
+
+    // LED闪烁指示活动
+    LED_SetState(1);
+    Delay_ms(100);
+    LED_SetState(0);
     Delay_ms(50);
     LED_SetState(0);
 }
