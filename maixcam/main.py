@@ -1,17 +1,18 @@
 """
 激光追踪系统 - MaixCam端主程序
 实现红色色块和绿色激光的实时检测与追踪
+支持多种运行模式：正常追踪、通信诊断、功能测试
 """
 
-from maix import camera, display, image, app, time
+from maix import camera, display, image, app, time, pinmap
 from laser_tracker import LaserTracker
 from config import Config
 import sys
 
-def main():
-    """主函数"""
+def run_laser_tracking():
+    """运行激光追踪模式"""
     print("=" * 50)
-    print("激光追踪系统启动")
+    print("激光追踪模式")
     print("=" * 50)
 
     try:
@@ -33,6 +34,147 @@ def main():
         # 启动追踪
         print("\n开始激光追踪...")
         tracker.start_tracking()
+
+    except KeyboardInterrupt:
+        print("\n用户中断程序")
+    except Exception as e:
+        print(f"程序异常: {e}")
+        import traceback
+        traceback.print_exc()
+
+def run_communication_diagnosis():
+    """运行通信诊断模式"""
+    print("=" * 50)
+    print("通信诊断模式")
+    print("=" * 50)
+
+    try:
+        from maix import uart
+        import struct
+
+        # 配置串口2引脚映射
+        pinmap.set_pin_function("A29", "UART2_RX")
+        pinmap.set_pin_function("A28", "UART2_TX")
+
+        # 初始化串口2
+        device = "/dev/ttyS2"
+        serial = uart.UART(device, 115200)
+        print(f"✓ UART初始化成功: {device}@115200")
+
+        print("开始发送测试数据...")
+
+        # 发送测试数据包
+        for i in range(20):
+            # 模拟移动的目标
+            target_x = 320 + int(50 * (i % 10 - 5))
+            target_y = 240 + int(30 * (i % 8 - 4))
+
+            # 模拟追踪的激光
+            laser_x = target_x - 20 + int(10 * (i % 3))
+            laser_y = target_y - 15 + int(8 * (i % 4))
+
+            # 发送目标位置
+            target_packet = bytes([
+                0xAA, 0x55, 0x04, 0x01,
+                target_x & 0xFF, (target_x >> 8) & 0xFF,
+                target_y & 0xFF, (target_y >> 8) & 0xFF
+            ])
+            serial.write(target_packet)
+
+            time.sleep(0.02)
+
+            # 发送激光位置
+            laser_packet = bytes([
+                0xAA, 0x55, 0x04, 0x02,
+                laser_x & 0xFF, (laser_x >> 8) & 0xFF,
+                laser_y & 0xFF, (laser_y >> 8) & 0xFF
+            ])
+            serial.write(laser_packet)
+
+            print(f"第{i+1:2d}组: 目标({target_x:3d},{target_y:3d}) 激光({laser_x:3d},{laser_y:3d})")
+            time.sleep(0.08)
+
+        print("✓ 通信诊断完成")
+
+    except Exception as e:
+        print(f"✗ 通信诊断失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+def run_camera_test():
+    """运行摄像头测试模式"""
+    print("=" * 50)
+    print("摄像头测试模式")
+    print("=" * 50)
+
+    try:
+        from image_processor import ImageProcessor
+        config = Config()
+
+        processor = ImageProcessor(config)
+        print("摄像头初始化成功")
+
+        frame_count = 0
+        detection_count = 0
+
+        while not app.need_exit() and frame_count < 300:
+            img = processor.capture_image()
+            if img is None:
+                continue
+
+            # 检测红色目标和绿色激光
+            red_target = processor.detect_red_target(img)
+            green_laser = processor.detect_green_laser(img)
+
+            # 绘制检测结果
+            if red_target:
+                img.draw_circle(red_target[0], red_target[1], 10, image.COLOR_RED, 3)
+                detection_count += 1
+
+            if green_laser:
+                img.draw_circle(green_laser[0], green_laser[1], 8, image.COLOR_GREEN, 3)
+                detection_count += 1
+
+            # 显示信息
+            img.draw_string(10, 10, "Camera Test", image.COLOR_WHITE, 2)
+            img.draw_string(10, 40, f"Frame: {frame_count}", image.COLOR_WHITE, 1.5)
+            img.draw_string(10, 65, f"Detections: {detection_count}", image.COLOR_WHITE, 1.5)
+
+            processor.display_image(img)
+            frame_count += 1
+
+        processor.close()
+        print("✓ 摄像头测试完成")
+
+    except Exception as e:
+        print(f"✗ 摄像头测试失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+def main():
+    """主函数 - 模式选择入口"""
+    print("MaixCam激光追踪系统")
+    print("请选择运行模式:")
+    print("1. 激光追踪模式 (完整功能)")
+    print("2. 通信诊断模式 (测试与STM32通信)")
+    print("3. 摄像头测试模式 (测试图像检测)")
+
+    # 配置串口2引脚映射（所有模式都需要）
+    pinmap.set_pin_function("A29", "UART2_RX")
+    pinmap.set_pin_function("A28", "UART2_TX")
+
+    try:
+        choice = input("请输入选择 (1-3): ").strip()
+
+        if choice == "1":
+            run_laser_tracking()
+        elif choice == "2":
+            run_communication_diagnosis()
+        elif choice == "3":
+            run_camera_test()
+        else:
+            print("无效选择，默认运行激光追踪模式")
+            run_laser_tracking()
 
     except KeyboardInterrupt:
         print("\n用户中断程序")

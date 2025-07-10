@@ -31,10 +31,10 @@ bool LaserTracker_Init(void)
 
     // 初始化PID控制器
     // 水平PID参数 (根据实际调试调整)
-    PID_Init(&g_laser_tracker.pid_h, 2.0f, 0.1f, 0.5f, 200.0f);
+    PID_Init(&g_laser_tracker.pid_h, 8.0f, 0.1f, 0.5f, 200.0f);
     
     // 垂直PID参数 (根据实际调试调整)
-    PID_Init(&g_laser_tracker.pid_v, 2.0f, 0.1f, 0.5f, 200.0f);
+    PID_Init(&g_laser_tracker.pid_v, 8.0f, 0.1f, 0.5f, 200.0f);
 
     // 设置舵机初始位置为中心
     g_laser_tracker.servo_h_pos = SERVO_POS_CENTER;
@@ -80,28 +80,38 @@ void LaserTracker_Process(void)
     // 检查是否有新的位置数据
     if (g_laser_tracker.target_pos.valid && g_laser_tracker.laser_pos.valid) {
         // 计算水平方向PID输出
-        float h_error = (float)(g_laser_tracker.target_pos.x - g_laser_tracker.laser_pos.x);
-        float h_output = PID_Calculate(&g_laser_tracker.pid_h, 0.0f, h_error);
-        
+        // 目标：让激光位置接近目标位置，所以setpoint是目标位置，measured是激光位置
+        float h_output = PID_Calculate(&g_laser_tracker.pid_h,
+                                      (float)g_laser_tracker.target_pos.x,
+                                      (float)g_laser_tracker.laser_pos.x);
+
         // 计算垂直方向PID输出
-        float v_error = (float)(g_laser_tracker.target_pos.y - g_laser_tracker.laser_pos.y);
-        float v_output = PID_Calculate(&g_laser_tracker.pid_v, 0.0f, v_error);
+        float v_output = PID_Calculate(&g_laser_tracker.pid_v,
+                                      (float)g_laser_tracker.target_pos.y,
+                                      (float)g_laser_tracker.laser_pos.y);
         
         // 更新舵机位置
         int16_t new_h_pos = (int16_t)g_laser_tracker.servo_h_pos + (int16_t)h_output;
         int16_t new_v_pos = (int16_t)g_laser_tracker.servo_v_pos + (int16_t)v_output;
-        
+
         // 位置限幅
         if (new_h_pos < SERVO_POS_MIN) new_h_pos = SERVO_POS_MIN;
         if (new_h_pos > SERVO_POS_MAX) new_h_pos = SERVO_POS_MAX;
         if (new_v_pos < SERVO_POS_MIN) new_v_pos = SERVO_POS_MIN;
         if (new_v_pos > SERVO_POS_MAX) new_v_pos = SERVO_POS_MAX;
-        
+
         g_laser_tracker.servo_h_pos = (uint16_t)new_h_pos;
         g_laser_tracker.servo_v_pos = (uint16_t)new_v_pos;
-        
+
         // 发送舵机控制命令
         ServoBoard_MoveHV(g_laser_tracker.servo_h_pos, g_laser_tracker.servo_v_pos, 100);
+
+        // 调试输出（可选，用于诊断）
+        // 注意：在实际使用中可能需要注释掉以避免影响性能
+        static uint32_t debug_counter = 0;
+        if (++debug_counter % 10 == 0) {  // 每10次输出一次，避免过多输出
+            // 这里可以添加调试输出，但需要确保有输出方式（如LED指示或预留的调试接口）
+        }
         
         // 清除有效标志，等待新数据
         g_laser_tracker.target_pos.valid = 0;

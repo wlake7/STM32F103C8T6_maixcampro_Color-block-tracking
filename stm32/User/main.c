@@ -27,10 +27,11 @@
 /* 宏开关模式控制 */
 #define MODE_SERVO_TEST     1   // 舵机测试模式
 #define MODE_LASER_TRACK    2   // 激光追踪模式
-#define MODE_DEBUG          3   // 调试模式 (预留)
+#define MODE_COMM_DEBUG     3   // 通信调试模式
+#define MODE_DEBUG          4   // 调试模式 (预留)
 
 /* 当前运行模式 */
-#define CURRENT_MODE        MODE_LASER_TRACK
+#define CURRENT_MODE        MODE_COMM_DEBUG
 
 /* 舵机控制板协议常量 */
 #define SERVO_HEADER1       0x55
@@ -78,6 +79,9 @@ static void LED_SetState(uint8_t on);
 #if CURRENT_MODE == MODE_SERVO_TEST
 static void ServoTest_Process(void);
 static void ServoTest_Init(void);
+#elif CURRENT_MODE == MODE_COMM_DEBUG
+static void CommDebug_Process(void);
+static void CommDebug_Init(void);
 #endif
 
 /**
@@ -131,6 +135,24 @@ int main(void)
         Delay_ms(50);  // 20Hz主循环
     }
 
+#elif CURRENT_MODE == MODE_COMM_DEBUG
+    // 通信调试初始化
+    CommDebug_Init();
+
+    // 主循环
+    while (1) {
+        CommDebug_Process();
+
+        // LED心跳指示
+        static uint32_t last_led_time = 0;
+        if ((System_GetTick() - last_led_time) > 1000) {
+            last_led_time = System_GetTick();
+            LED_Toggle();
+        }
+
+        Delay_ms(100);  // 10Hz主循环
+    }
+
 #endif
 
     return 0;
@@ -153,7 +175,7 @@ static void System_Init(void)
     // 舵机控制板初始化
     ServoBoard_Init();
 
-#if CURRENT_MODE == MODE_LASER_TRACK
+#if CURRENT_MODE == MODE_LASER_TRACK || CURRENT_MODE == MODE_COMM_DEBUG
     // 摄像头通信初始化
     CameraComm_Init();
 #endif
@@ -304,6 +326,111 @@ static void ServoTest_Process(void)
         default:
             g_test_step = TEST_STEP_CENTER;
             break;
+    }
+}
+
+#endif
+
+#if CURRENT_MODE == MODE_COMM_DEBUG
+
+/* 通信调试相关变量 */
+static uint32_t g_received_packets = 0;
+static uint32_t g_target_packets = 0;
+static uint32_t g_laser_packets = 0;
+static uint32_t g_last_target_x = 0, g_last_target_y = 0;
+static uint32_t g_last_laser_x = 0, g_last_laser_y = 0;
+
+/**
+ * @brief 通信调试初始化
+ */
+static void CommDebug_Init(void)
+{
+    // 初始化摄像头通信
+    CameraComm_Init();
+
+    // 舵机回到中心位置
+    ServoBoard_ReturnToCenter();
+    Delay_ms(1000);
+
+    // LED指示初始化完成
+    LED_SetState(1);
+    Delay_ms(200);
+    LED_SetState(0);
+    Delay_ms(200);
+    LED_SetState(1);
+    Delay_ms(200);
+    LED_SetState(0);
+}
+
+/**
+ * @brief 通信调试处理函数
+ */
+static void CommDebug_Process(void)
+{
+    // 检查是否有新的摄像头数据
+    CameraComm_Data_t camera_data;
+    if (CameraComm_GetLatestData(&camera_data)) {
+        g_received_packets++;
+
+        // 检查数据类型并统计
+        if (camera_data.target.x != g_last_target_x || camera_data.target.y != g_last_target_y) {
+            g_target_packets++;
+            g_last_target_x = camera_data.target.x;
+            g_last_target_y = camera_data.target.y;
+        }
+
+        if (camera_data.laser.x != g_last_laser_x || camera_data.laser.y != g_last_laser_y) {
+            g_laser_packets++;
+            g_last_laser_x = camera_data.laser.x;
+            g_last_laser_y = camera_data.laser.y;
+        }
+
+        // 简单的舵机响应测试：根据目标位置移动舵机
+        uint16_t servo_h = (uint16_t)((float)camera_data.target.x * 1000.0f / 640.0f);
+        uint16_t servo_v = (uint16_t)((float)camera_data.target.y * 1000.0f / 480.0f);
+
+        // 限幅
+        if (servo_h > 1000) servo_h = 1000;
+        if (servo_v > 1000) servo_v = 1000;
+
+        // 发送舵机命令
+        ServoBoard_MoveHV(servo_h, servo_v, 200);
+
+        // LED闪烁指示收到数据
+        LED_SetState(1);
+        Delay_ms(10);
+        LED_SetState(0);
+    }
+
+    // 每5秒输出统计信息（通过LED闪烁模式）
+    static uint32_t last_stats_time = 0;
+    uint32_t current_time = System_GetTick();
+    if ((current_time - last_stats_time) > 5000) {
+        last_stats_time = current_time;
+
+        // 通过LED闪烁次数指示接收状态
+        // 快闪：收到数据包总数/10
+        // 慢闪：目标数据包数/5
+        uint8_t total_blinks = (g_received_packets / 10) % 10;
+        uint8_t target_blinks = (g_target_packets / 5) % 10;
+
+        // 快闪指示总数据包
+        for (uint8_t i = 0; i < total_blinks; i++) {
+            LED_SetState(1);
+            Delay_ms(100);
+            LED_SetState(0);
+            Delay_ms(100);
+        }
+
+        Delay_ms(500);
+
+        // 慢闪指示目标数据包
+        for (uint8_t i = 0; i < target_blinks; i++) {
+            LED_SetState(1);
+            Delay_ms(300);
+            LED_SetState(0);
+            Delay_ms(300);
+        }
     }
 }
 
