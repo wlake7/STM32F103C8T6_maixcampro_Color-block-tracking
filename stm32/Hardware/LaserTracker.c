@@ -97,24 +97,28 @@ void LaserTracker_Process(void)
     if (g_laser_tracker.target_pos.valid && g_laser_tracker.laser_pos.valid) {
         // 更新最后更新时间
         g_laser_tracker.last_update_time = System_GetTick();
-        // 计算位置误差
+        // 计算位置误差（目标位置 - 激光位置）
         float error_x = (float)g_laser_tracker.target_pos.x - (float)g_laser_tracker.laser_pos.x;
         float error_y = (float)g_laser_tracker.target_pos.y - (float)g_laser_tracker.laser_pos.y;
 
         // 添加死区处理，避免小误差引起抖动
-        if (fabs(error_x) < 10.0f) error_x = 0.0f;
-        if (fabs(error_y) < 10.0f) error_y = 0.0f;
+        if (fabs(error_x) < 5.0f) error_x = 0.0f;
+        if (fabs(error_y) < 5.0f) error_y = 0.0f;
 
-        // 计算水平方向PID输出
-        // 注意：PID输出直接作为舵机位置的调整量
-        float h_output = PID_Calculate(&g_laser_tracker.pid_h, 0.0f, -error_x);
+        // 简单比例控制（参考成功案例，只用P控制）
+        // 控制系数0.1，根据实际效果调整
+        float h_increment = error_x * 0.1f;
+        float v_increment = error_y * 0.1f;
 
-        // 计算垂直方向PID输出
-        float v_output = PID_Calculate(&g_laser_tracker.pid_v, 0.0f, -error_y);
-        
-        // 更新舵机位置
-        int16_t new_h_pos = (int16_t)g_laser_tracker.servo_h_pos + (int16_t)h_output;
-        int16_t new_v_pos = (int16_t)g_laser_tracker.servo_v_pos + (int16_t)v_output;
+        // 限制单次增量，防止过大跳跃
+        if (h_increment > 20.0f) h_increment = 20.0f;
+        if (h_increment < -20.0f) h_increment = -20.0f;
+        if (v_increment > 20.0f) v_increment = 20.0f;
+        if (v_increment < -20.0f) v_increment = -20.0f;
+
+        // 更新舵机位置（增量控制）
+        int16_t new_h_pos = (int16_t)g_laser_tracker.servo_h_pos + (int16_t)h_increment;
+        int16_t new_v_pos = (int16_t)g_laser_tracker.servo_v_pos + (int16_t)v_increment;
 
         // 位置限幅
         if (new_h_pos < SERVO_POS_MIN) new_h_pos = SERVO_POS_MIN;
@@ -125,8 +129,8 @@ void LaserTracker_Process(void)
         g_laser_tracker.servo_h_pos = (uint16_t)new_h_pos;
         g_laser_tracker.servo_v_pos = (uint16_t)new_v_pos;
 
-        // 发送舵机控制命令
-        ServoBoard_MoveHV(g_laser_tracker.servo_h_pos, g_laser_tracker.servo_v_pos, 100);
+        // 发送舵机控制命令（减少移动时间，提高响应速度）
+        ServoBoard_MoveHV(g_laser_tracker.servo_h_pos, g_laser_tracker.servo_v_pos, 50);
 
         // OLED实时调试显示
         static uint32_t debug_counter = 0;
@@ -142,11 +146,15 @@ void LaserTracker_Process(void)
             OLED_ShowString(2, 16, ",");
             OLED_ShowNum(2, 17, g_laser_tracker.laser_pos.y, 3);
 
-            // 显示误差信息
-            OLED_ShowString(3, 1, "Err:");
-            OLED_ShowSignedNum(3, 5, (int32_t)error_x, 3);
-            OLED_ShowString(3, 8, ",");
-            OLED_ShowSignedNum(3, 9, (int32_t)error_y, 3);
+            // 显示误差和增量信息
+            OLED_ShowString(3, 1, "E:");
+            OLED_ShowSignedNum(3, 3, (int32_t)error_x, 3);
+            OLED_ShowString(3, 6, ",");
+            OLED_ShowSignedNum(3, 7, (int32_t)error_y, 3);
+            OLED_ShowString(3, 11, "I:");
+            OLED_ShowSignedNum(3, 13, (int32_t)h_increment, 2);
+            OLED_ShowString(3, 15, ",");
+            OLED_ShowSignedNum(3, 16, (int32_t)v_increment, 2);
 
             // 显示舵机位置
             OLED_ShowString(4, 1, "Servo:");
