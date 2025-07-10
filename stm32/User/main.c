@@ -452,7 +452,7 @@ static void CommDebug_Process(void)
         OLED_ShowString(2, 1, "RX:");
         OLED_ShowNum(2, 4, stats->packets_received, 4);
         OLED_ShowString(2, 9, "ERR:");
-        OLED_ShowNum(2, 13, stats->parse_errors, 3);
+        OLED_ShowNum(2, 13, stats->packets_error, 3);
 
         // 第3行和第4行：最新数据
         TrackingData_t camera_data;
@@ -510,7 +510,6 @@ static void CommDebug_Process(void)
 
     // 每5秒输出统计信息（通过LED闪烁模式）
     static uint32_t last_stats_time = 0;
-    uint32_t current_time = System_GetTick();
     if ((current_time - last_stats_time) > 5000) {
         last_stats_time = current_time;
 

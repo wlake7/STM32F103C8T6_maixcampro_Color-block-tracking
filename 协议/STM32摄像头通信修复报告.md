@@ -8,6 +8,7 @@
 - **STM32端**: 使用USART1 (PA9-TX, PA10-RX)
 - **MaixCam端**: 之前使用串口2 (/dev/ttyS2, A28-TX, A29-RX)
 - **问题**: 两端串口不对应，无法通信
+- **正确方案**: 使用MaixCam串口0 (/dev/ttyS0, A16-TX, A17-RX)，默认可用无需映射
 
 #### 2. **协议格式不匹配** ⚠️
 - **STM32端期望**: CMD_TARGET_POSITION包含12字节数据
@@ -24,17 +25,17 @@
 #### MaixCam端修改
 ```python
 # config.py
-self.uart_port = "/dev/ttyS1"  # 改为串口1
+self.uart_port = "/dev/ttyS0"  # 使用串口0，默认可用
 
 # main.py
-pinmap.set_pin_function("A18", "UART1_RX")  # 串口1引脚映射
-pinmap.set_pin_function("A19", "UART1_TX")
+# 串口0默认可用，不需要引脚映射
+# 添加开机日志处理机制
 ```
 
 #### 硬件连接
 ```
-MaixCam A19(TX) → STM32 PA10(RX)
-MaixCam A18(RX) → STM32 PA9(TX)
+MaixCam A16(TX) → STM32 PA10(RX)
+MaixCam A17(RX) → STM32 PA9(TX)
 共地连接
 ```
 
@@ -73,7 +74,7 @@ case CMD_TARGET_POSITION:
 
 ### 数据流向
 ```
-MaixCam → 串口1(/dev/ttyS1) → STM32 USART1 → CameraComm_IRQHandler → 
+MaixCam → 串口0(/dev/ttyS0) → STM32 USART1 → CameraComm_IRQHandler →
 CameraComm_ParsePacket → LaserTracker_UpdatePosition → 舵机控制
 ```
 
@@ -102,7 +103,9 @@ python main.py
 MaixCam激光追踪系统
 当前运行模式: 2 - 通信诊断模式
 启动通信诊断模式...
-✓ UART初始化成功: /dev/ttyS1@115200
+✓ UART初始化成功: /dev/ttyS0@115200
+等待开机日志结束...
+✓ 开机日志已清除
 开始发送测试数据...
 第1组: 目标(270,210) 激光(250,195)
 ```
@@ -127,13 +130,13 @@ L:250,195 S:390
 
 ### 如果OLED显示"COMM: TIMEOUT"
 1. **检查硬件连接**：
-   - MaixCam A19 → STM32 PA10
-   - MaixCam A18 → STM32 PA9
+   - MaixCam A16 → STM32 PA10
+   - MaixCam A17 → STM32 PA9
    - 共地连接
 
 2. **检查波特率**：双方都是115200bps
 
-3. **检查引脚映射**：MaixCam端A18/A19是否正确映射到UART1
+3. **检查开机日志处理**：MaixCam端是否正确清除了开机日志
 
 ### 如果OLED显示"RX:0000"
 1. **检查MaixCam程序**：是否正常发送数据

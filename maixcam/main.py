@@ -4,7 +4,7 @@
 支持多种运行模式：正常追踪、通信诊断、功能测试
 """
 
-from maix import app, time, pinmap
+from maix import app, time
 from laser_tracker import LaserTracker
 from config import Config
 from run_config import get_run_mode, print_mode_info
@@ -52,10 +52,21 @@ def run_communication_diagnosis():
         from maix import uart
         import struct
 
-        # 初始化串口1
-        device = "/dev/ttyS1"
+        # 初始化串口0
+        device = "/dev/ttyS0"
         serial = uart.UART(device, 115200)
         print(f"✓ UART初始化成功: {device}@115200")
+
+        # 等待并清除开机日志
+        print("等待开机日志结束...")
+        time.sleep(3)  # 等待开机日志完成
+
+        # 清空接收缓冲区，丢弃开机日志
+        while True:
+            data = serial.read(timeout=100)
+            if not data:
+                break
+        print("✓ 开机日志已清除")
 
         print("开始发送测试数据...")
 
@@ -156,9 +167,9 @@ def main():
     # 获取运行模式
     run_mode = get_run_mode()
 
-    # 配置串口1引脚映射（所有模式都需要）
-    pinmap.set_pin_function("A18", "UART1_RX")
-    pinmap.set_pin_function("A19", "UART1_TX")
+    # 串口0默认可用，不需要引脚映射
+    # pinmap.set_pin_function("A16", "UART0_TX")  # 默认已配置
+    # pinmap.set_pin_function("A17", "UART0_RX")  # 默认已配置
 
     try:
         if run_mode == 1:
