@@ -40,10 +40,8 @@ class Communication:
         try:
             from maix import uart
 
-            # 使用串口2
-            device = "/dev/ttyS2"  # 串口2
-            if self.config.uart_port:
-                device = self.config.uart_port
+            # 从配置中获取串口设备
+            device = self.config.uart_port
 
             # 使用官方API格式初始化UART
             self.uart_port = uart.UART(device, self.config.uart_baudrate)
@@ -65,16 +63,19 @@ class Communication:
         if data is None:
             data = []
 
-        # 构建数据包
-        packet = []
-        packet.extend(self.header)  # 帧头 [0xAA, 0x55]
-        packet.append(len(data))    # 数据长度
-        packet.append(cmd)          # 命令
-        packet.extend(data)         # 数据
+        # 1. 构建数据包的核心部分（长度、命令、数据）
+        payload = bytearray()
+        payload.append(len(data))
+        payload.append(cmd)
+        payload.extend(data)
 
-        # 计算校验和
-        checksum = self.calculate_checksum(packet[2:])  # 从长度字段开始计算
-        packet.append(checksum)
+        # 2. 计算校验和
+        checksum = self.calculate_checksum(payload)
+
+        # 3. 构建完整的数据包
+        packet = bytearray(self.header) # 从帧头开始
+        packet.extend(payload)
+        packet.append(checksum) # 在末尾追加校验和
 
         return bytes(packet)
 
@@ -119,16 +120,22 @@ class Communication:
 
         try:
             # 分别发送目标位置和激光位置
-            # 发送目标位置
-            target_data = []
-            target_data.extend(struct.pack('<H', int(target_pos[0])))  # X坐标
-            target_data.extend(struct.pack('<H', int(target_pos[1])))  # Y坐标
+            # 发送目标位置 - 使用正确的数据包格式
+            target_x = int(target_pos[0])
+            target_y = int(target_pos[1])
+            target_data = [
+                target_x & 0xFF, (target_x >> 8) & 0xFF,  # X坐标（小端）
+                target_y & 0xFF, (target_y >> 8) & 0xFF   # Y坐标（小端）
+            ]
             target_packet = self.create_packet(self.CMD_TARGET_POSITION, target_data)
 
             # 发送激光位置
-            laser_data = []
-            laser_data.extend(struct.pack('<H', int(laser_pos[0])))   # X坐标
-            laser_data.extend(struct.pack('<H', int(laser_pos[1])))   # Y坐标
+            laser_x = int(laser_pos[0])
+            laser_y = int(laser_pos[1])
+            laser_data = [
+                laser_x & 0xFF, (laser_x >> 8) & 0xFF,    # X坐标（小端）
+                laser_y & 0xFF, (laser_y >> 8) & 0xFF     # Y坐标（小端）
+            ]
             laser_packet = self.create_packet(self.CMD_LASER_POSITION, laser_data)
 
             # 发送两个数据包

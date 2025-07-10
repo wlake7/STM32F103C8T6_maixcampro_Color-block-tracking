@@ -14,8 +14,8 @@
 ServoBoardSystem_t g_servo_board_system;
 
 /* 私有变量 */
-static uint8_t rx_buffer[SERVO_MAX_PACKET_SIZE];
-static uint8_t rx_index = 0;
+static uint8_t servo_board_rx_buffer[SERVO_MAX_PACKET_SIZE];
+static uint8_t servo_board_rx_index = 0;
 static bool packet_received = false;
 static uint32_t last_receive_time = 0;
 static uint32_t last_send_time = 0;
@@ -326,51 +326,51 @@ bool ServoBoard_StopAll(void)
  */
 void ServoBoard_IRQHandler(uint8_t data)
 {
-    static uint8_t state = 0;
+    static uint8_t servo_board_state = 0;
     static uint8_t expected_length = 0;
 
-    switch (state) {
+    switch (servo_board_state) {
         case 0:  // 等待第一个帧头
             if (data == SERVO_BOARD_HEADER1) {
-                rx_buffer[0] = data;
-                state = 1;
+                servo_board_rx_buffer[0] = data;
+                servo_board_state = 1;
             }
             break;
 
         case 1:  // 等待第二个帧头
             if (data == SERVO_BOARD_HEADER2) {
-                rx_buffer[1] = data;
-                state = 2;
+                servo_board_rx_buffer[1] = data;
+                servo_board_state = 2;
             } else {
-                state = 0;  // 重新开始
+                servo_board_state = 0;  // 重新开始
             }
             break;
 
         case 2:  // 接收数据长度
-            rx_buffer[2] = data;
+            servo_board_rx_buffer[2] = data;
             expected_length = data + 2;  // 加上帧头长度
-            rx_index = 3;
-            state = 3;
+            servo_board_rx_index = 3;
+            servo_board_state = 3;
             break;
 
         case 3:  // 接收数据
-            rx_buffer[rx_index++] = data;
-            if (rx_index >= expected_length) {
+            servo_board_rx_buffer[servo_board_rx_index++] = data;
+            if (servo_board_rx_index >= expected_length) {
                 packet_received = true;
                 last_receive_time = System_GetTick();
-                state = 0;  // 重新开始
+                servo_board_state = 0;  // 重新开始
             }
             break;
 
         default:
-            state = 0;
+            servo_board_state = 0;
             break;
     }
 
     // 防止缓冲区溢出
-    if (rx_index >= SERVO_MAX_PACKET_SIZE) {
-        rx_index = 0;
-        state = 0;
+    if (servo_board_rx_index >= SERVO_MAX_PACKET_SIZE) {
+        servo_board_rx_index = 0;
+        servo_board_state = 0;
     }
 }
 
@@ -440,8 +440,8 @@ void ServoBoard_Process(void)
     // 处理接收到的数据包
     if (packet_received) {
         packet_received = false;
-        ServoBoard_ParsePacket(rx_buffer, rx_index);
-        rx_index = 0;
+        ServoBoard_ParsePacket(servo_board_rx_buffer, servo_board_rx_index);
+        servo_board_rx_index = 0;
         g_servo_board_system.stats.packets_received++;
     }
 
@@ -492,7 +492,7 @@ void ServoBoard_Reset(void)
     memset(&g_servo_board_system.stats, 0, sizeof(ServoBoardStats_t));
 
     // 重置接收状态
-    rx_index = 0;
+    servo_board_rx_index = 0;
     packet_received = false;
 
     SERVO_BOARD_DEBUG("Servo Board reset");

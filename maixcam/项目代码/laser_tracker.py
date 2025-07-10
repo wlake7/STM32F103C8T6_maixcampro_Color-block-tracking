@@ -4,8 +4,8 @@
 """
 
 from maix import camera, display, image, app, time
-from image_processor import ImageProcessor
-from communication import Communication
+from maixcam.项目代码.image_processor import ImageProcessor
+from maixcam.项目代码.communication import Communication
 import math
 
 class LaserTracker:

@@ -27,7 +27,7 @@
 #define CAMERA_PACKET_HEADER1       0xAA            // 帧头1
 #define CAMERA_PACKET_HEADER2       0x55            // 帧头2
 #define CAMERA_MAX_PACKET_SIZE      64              // 最大数据包大小
-#define CAMERA_COMM_TIMEOUT_MS      100             // 通信超时时间
+#define CAMERA_COMM_TIMEOUT_MS      10000             // 通信超时时间
 
 /* 命令定义 */
 typedef enum {

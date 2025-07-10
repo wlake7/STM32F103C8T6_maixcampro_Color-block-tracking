@@ -14,8 +14,8 @@
 CameraCommSystem_t g_camera_comm_system;
 
 /* 私有变量 */
-static uint8_t rx_buffer[CAMERA_MAX_PACKET_SIZE];
-static uint8_t rx_index = 0;
+static uint8_t camera_comm_rx_buffer[CAMERA_MAX_PACKET_SIZE];
+static uint8_t camera_comm_rx_index = 0;
 static bool packet_received = false;
 static uint32_t last_receive_time = 0;
 static bool new_data_flag = false;
@@ -43,7 +43,7 @@ bool CameraComm_Init(void)
     g_camera_comm_system.communication_ok = false;
     
     // 重置接收状态
-    rx_index = 0;
+    camera_comm_rx_index = 0;
     packet_received = false;
     new_data_flag = false;
     
@@ -95,7 +95,7 @@ static void CameraComm_USART1_Init(void)
 
     // 配置NVIC中断
     NVIC_InitStructure.NVIC_IRQChannel = CAMERA_UART_IRQ;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
@@ -271,39 +271,39 @@ static void CameraComm_ParsePacket(uint8_t* packet, uint8_t length)
  */
 void CameraComm_IRQHandler(uint8_t data)
 {
-    static uint8_t state = 0;
+    static uint8_t camera_comm_state = 0;
     static uint8_t expected_length = 0;
 
-    switch (state) {
+    switch (camera_comm_state) {
         case 0:  // 等待第一个帧头
             if (data == CAMERA_PACKET_HEADER1) {
-                rx_buffer[0] = data;
-                state = 1;
+                camera_comm_rx_buffer[0] = data;
+                camera_comm_state = 1;
             }
             break;
 
         case 1:  // 等待第二个帧头
             if (data == CAMERA_PACKET_HEADER2) {
-                rx_buffer[1] = data;
-                state = 2;
+                camera_comm_rx_buffer[1] = data;
+                camera_comm_state = 2;
             } else {
-                state = 0;  // 重新开始
+                camera_comm_state = 0;  // 重新开始
             }
             break;
 
         case 2:  // 接收数据长度
-            rx_buffer[2] = data;
+            camera_comm_rx_buffer[2] = data;
             expected_length = data + 5;  // 数据长度 + 帧头(2) + 长度(1) + 命令(1) + 校验和(1)
-            rx_index = 3;
-            state = 3;
+            camera_comm_rx_index = 3;
+            camera_comm_state = 3;
             break;
 
         case 3:  // 接收数据
-            rx_buffer[rx_index++] = data;
-            if (rx_index >= expected_length) {
+            camera_comm_rx_buffer[camera_comm_rx_index++] = data;
+            if (camera_comm_rx_index >= expected_length) {
                 // 验证校验和
-                uint8_t received_checksum = rx_buffer[rx_index - 1];
-                uint8_t calculated_checksum = CameraComm_CalculateChecksum(&rx_buffer[2], rx_index - 3);
+                uint8_t received_checksum = camera_comm_rx_buffer[camera_comm_rx_index - 1];
+                uint8_t calculated_checksum = CameraComm_CalculateChecksum(&camera_comm_rx_buffer[2], camera_comm_rx_index - 3);
                 
                 if (received_checksum == calculated_checksum) {
                     packet_received = true;
@@ -314,19 +314,19 @@ void CameraComm_IRQHandler(uint8_t data)
                     g_camera_comm_system.stats.packets_error++;
                     CAMERA_COMM_DEBUG("Checksum error: expected %d, got %d", calculated_checksum, received_checksum);
                 }
-                state = 0;  // 重新开始
+                camera_comm_state = 0;  // 重新开始
             }
             break;
 
         default:
-            state = 0;
+            camera_comm_state = 0;
             break;
     }
 
     // 防止缓冲区溢出
-    if (rx_index >= CAMERA_MAX_PACKET_SIZE) {
-        rx_index = 0;
-        state = 0;
+    if (camera_comm_rx_index >= CAMERA_MAX_PACKET_SIZE) {
+        camera_comm_rx_index = 0;
+        camera_comm_state = 0;
         g_camera_comm_system.stats.packets_error++;
     }
 }
@@ -341,8 +341,8 @@ void CameraComm_Process(void)
     // 处理接收到的数据包
     if (packet_received) {
         packet_received = false;
-        CameraComm_ParsePacket(rx_buffer, rx_index);
-        rx_index = 0;
+        CameraComm_ParsePacket(camera_comm_rx_buffer, camera_comm_rx_index);
+        camera_comm_rx_index = 0;
     }
 
     // 检查通信超时
@@ -375,7 +375,7 @@ CameraCommStats_t* CameraComm_GetStats(void)
 void CameraComm_Reset(void)
 {
     memset(&g_camera_comm_system.stats, 0, sizeof(CameraCommStats_t));
-    rx_index = 0;
+    camera_comm_rx_index = 0;
     packet_received = false;
     new_data_flag = false;
     CAMERA_COMM_DEBUG("Camera communication reset");

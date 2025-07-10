@@ -33,7 +33,7 @@
 #define MODE_DEBUG          5   // 调试模式 (预留)
 
 /* 当前运行模式 */
-#define CURRENT_MODE        MODE_COMM_DEBUG
+#define CURRENT_MODE        MODE_LASER_TRACK
 
 /* 舵机控制板协议常量 */
 #define SERVO_HEADER1       0x55
@@ -385,7 +385,8 @@ static uint32_t g_last_laser_x = 0, g_last_laser_y = 0;
 /**
  * @brief 通信调试初始化
  */
-static void CommDebug_Init(void)
+static void 
+CommDebug_Init(void)
 {
     // OLED显示调试模式信息
     OLED_Clear();
@@ -397,8 +398,8 @@ static void CommDebug_Init(void)
     // 启用舵机OLED调试
     ServoBoard_EnableOLEDDebug(true);
 
-    // 初始化摄像头通信
-    CameraComm_Init();
+    // 初始化摄像头通信，在系统初始化中已经初始化了，所有我注释掉了
+    //CameraComm_Init();
 
     // 舵机回到中心位置
     OLED_ShowString(2, 1, "Servo centering");
