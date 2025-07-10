@@ -36,40 +36,19 @@ class Communication:
 
     def init_comm_protocol(self):
         """初始化通信协议"""
-        # 使用MaixPy的UART API
+        # 使用官方UART API格式
         try:
-            from maix.peripheral import uart
+            from maix import uart
 
-            # 如果没有指定端口，尝试自动检测
-            if not self.config.uart_port:
-                available_ports = uart.list_devices()
-                print(f"可用UART端口: {available_ports}")
-                if available_ports:
-                    self.config.uart_port = available_ports[0]
-                    print(f"自动选择UART端口: {self.config.uart_port}")
-                else:
-                    print("未找到可用的UART端口")
-                    self.is_connected = False
-                    return
+            # 设置串口2设备路径
+            device = "/dev/ttyS2"  # 串口2
+            if self.config.uart_port:
+                device = self.config.uart_port
 
-            # 初始化UART
-            self.uart_port = uart.UART(
-                port=self.config.uart_port,
-                baudrate=self.config.uart_baudrate,
-                databits=uart.BITS.BITS_8,
-                parity=uart.PARITY.PARITY_NONE,
-                stopbits=uart.STOP.STOP_1,
-                flow_ctrl=uart.FLOW_CTRL.FLOW_CTRL_NONE
-            )
-
-            # 打开UART设备
-            result = self.uart_port.open()
-            if result == 0:  # 成功
-                self.is_connected = True
-                print(f"UART初始化成功: {self.config.uart_port}@{self.config.uart_baudrate}")
-            else:
-                print(f"UART打开失败: 错误码 {result}")
-                self.is_connected = False
+            # 使用官方API格式初始化UART
+            self.uart_port = uart.UART(device, self.config.uart_baudrate)
+            self.is_connected = True
+            print(f"UART初始化成功: {device}@{self.config.uart_baudrate}")
 
         except Exception as e:
             print(f"UART初始化失败: {e}")
@@ -107,7 +86,7 @@ class Communication:
             return False
 
         try:
-            # 使用UART发送
+            # 使用官方API发送字节数据
             self.uart_port.write(packet)
             self.sent_packets += 1
 
@@ -204,18 +183,11 @@ class Communication:
             return None
 
         try:
-            # 设置超时
-            if timeout:
-                original_timeout = self.uart_port.timeout
-                self.uart_port.timeout = timeout
+            # 使用官方API读取数据，timeout单位为毫秒
+            if timeout is None:
+                timeout = self.config.uart_timeout
 
-            # 读取数据
-            data = self.uart_port.read()
-
-            # 恢复原始超时设置
-            if timeout:
-                self.uart_port.timeout = original_timeout
-
+            data = self.uart_port.read(timeout=timeout)
             return data
         except Exception as e:
             print(f"数据接收失败: {e}")
@@ -258,7 +230,8 @@ class Communication:
         """关闭通信连接"""
         try:
             if hasattr(self, 'uart_port') and self.uart_port:
-                self.uart_port.close()
+                # 官方API会自动处理资源释放
+                del self.uart_port
                 self.uart_port = None
             self.is_connected = False
             print("通信连接已关闭")

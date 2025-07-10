@@ -64,18 +64,21 @@ def test_available_ports():
     print("=" * 50)
     print("可用端口检测")
     print("=" * 50)
-    
+
     try:
-        from maix.peripheral import uart
-        ports = uart.list_devices()
-        print(f"检测到的UART端口: {ports}")
-        
-        if not ports:
-            print("警告: 未检测到任何UART端口")
-            print("请检查硬件连接或驱动程序")
-        else:
-            print(f"建议使用端口: {ports[0]}")
-            
+        from maix import uart
+        # 根据官方例程，可以尝试常见的串口设备
+        common_ports = ["/dev/ttyS0", "/dev/ttyS1", "/dev/ttyS2", "/dev/ttyUSB0"]
+        print(f"常见UART端口: {common_ports}")
+        print("建议使用: /dev/ttyS2 (串口2)")
+
+        # 可以尝试使用uart.list_devices()如果可用
+        try:
+            ports = uart.list_devices()
+            print(f"系统检测到的端口: {ports}")
+        except:
+            print("uart.list_devices()不可用，使用默认端口")
+
     except Exception as e:
         print(f"端口检测失败: {e}")
 
