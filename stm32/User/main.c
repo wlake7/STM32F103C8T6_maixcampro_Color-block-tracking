@@ -368,7 +368,7 @@ static void CommDebug_Init(void)
 static void CommDebug_Process(void)
 {
     // 检查是否有新的摄像头数据
-    CameraComm_Data_t camera_data;
+    TrackingData_t camera_data;
     if (CameraComm_GetLatestData(&camera_data)) {
         g_received_packets++;
 
