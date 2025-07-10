@@ -2,12 +2,18 @@
 激光追踪系统 - MaixCam端主程序
 实现红色色块和绿色激光的实时检测与追踪
 支持多种运行模式：正常追踪、通信诊断、功能测试
+
+运行模式配置：
+- 修改下方 RUN_MODE 变量来选择运行模式
+- 1: 激光追踪模式 (完整功能)
+- 2: 通信诊断模式 (测试与STM32通信)
+- 3: 摄像头测试模式 (测试图像检测)
 """
 
-from maix import camera, display, image, app, time, pinmap
+from maix import app, time, pinmap
 from laser_tracker import LaserTracker
 from config import Config
-import sys
+from run_config import get_run_mode, print_mode_info
 
 def run_laser_tracking():
     """运行激光追踪模式"""
@@ -108,6 +114,7 @@ def run_camera_test():
     print("=" * 50)
 
     try:
+        from maix import image
         from image_processor import ImageProcessor
         config = Config()
 
@@ -153,27 +160,28 @@ def run_camera_test():
 
 def main():
     """主函数 - 模式选择入口"""
-    print("MaixCam激光追踪系统")
-    print("请选择运行模式:")
-    print("1. 激光追踪模式 (完整功能)")
-    print("2. 通信诊断模式 (测试与STM32通信)")
-    print("3. 摄像头测试模式 (测试图像检测)")
+    # 显示模式信息
+    print_mode_info()
+
+    # 获取运行模式
+    run_mode = get_run_mode()
 
     # 配置串口2引脚映射（所有模式都需要）
     pinmap.set_pin_function("A29", "UART2_RX")
     pinmap.set_pin_function("A28", "UART2_TX")
 
     try:
-        choice = input("请输入选择 (1-3): ").strip()
-
-        if choice == "1":
+        if run_mode == 1:
+            print("启动激光追踪模式...")
             run_laser_tracking()
-        elif choice == "2":
+        elif run_mode == 2:
+            print("启动通信诊断模式...")
             run_communication_diagnosis()
-        elif choice == "3":
+        elif run_mode == 3:
+            print("启动摄像头测试模式...")
             run_camera_test()
         else:
-            print("无效选择，默认运行激光追踪模式")
+            print("无效模式配置，默认运行激光追踪模式")
             run_laser_tracking()
 
     except KeyboardInterrupt:
