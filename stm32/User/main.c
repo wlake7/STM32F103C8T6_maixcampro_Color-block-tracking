@@ -33,8 +33,7 @@
 #define MODE_DEBUG          5   // 调试模式 (预留)
 
 /* 当前运行模式 */
-#define CURRENT_MODE        MODE_LASER_TRACK
-
+#define CURRENT_MODE       MODE_LASER_TRACK
 /* 舵机控制板协议常量 */
 #define SERVO_HEADER1       0x55
 #define SERVO_HEADER2       0x55
@@ -128,6 +127,7 @@ int main(void)
 
     // 主循环
     while (1) {
+        CameraComm_Process(); // 处理摄像头通信数据
         LaserTracker_Process();
 
         // LED心跳指示

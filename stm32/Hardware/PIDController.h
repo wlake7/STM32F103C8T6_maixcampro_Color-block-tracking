@@ -177,13 +177,13 @@ float PIDController_Constrain(float value, float min, float max);
 float PIDController_ApplyDeadzone(float error, float deadzone);
 
 /* 默认PID参数 */
-#define PID_DEFAULT_KP_H        1.0f        // 水平轴默认Kp
-#define PID_DEFAULT_KI_H        0.1f        // 水平轴默认Ki
-#define PID_DEFAULT_KD_H        0.05f       // 水平轴默认Kd
+#define PID_DEFAULT_KP_H        10.0f        // 水平轴默认Kp
+#define PID_DEFAULT_KI_H        0.001f        // 水平轴默认Ki
+#define PID_DEFAULT_KD_H        0.001f       // 水平轴默认Kd
 
-#define PID_DEFAULT_KP_V        1.0f        // 垂直轴默认Kp
-#define PID_DEFAULT_KI_V        0.1f        // 垂直轴默认Ki
-#define PID_DEFAULT_KD_V        0.05f       // 垂直轴默认Kd
+#define PID_DEFAULT_KP_V        10.0f        // 垂直轴默认Kp
+#define PID_DEFAULT_KI_V        0.001f        // 垂直轴默认Ki
+#define PID_DEFAULT_KD_V        0.001f       // 垂直轴默认Kd
 
 #define PID_DEFAULT_SAMPLE_TIME 0.02f       // 默认采样时间 20ms
 

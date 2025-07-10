@@ -36,15 +36,15 @@ bool LaserTracker_Init(void)
     memset(&g_laser_tracker, 0, sizeof(LaserTracker_t));
 
     // 初始化PID控制器
-    // 水平PID参数 (根据实际调试调整)
-    PID_Init(&g_laser_tracker.pid_h, 8.0f, 0.1f, 0.5f, 200.0f);
+    // 水平PID参数 (降低参数，提高稳定性)
+    PID_Init(&g_laser_tracker.pid_h, 2.0f, 0.01f, 0.1f, 50.0f);
 
-    // 垂直PID参数 (根据实际调试调整)
-    PID_Init(&g_laser_tracker.pid_v, 8.0f, 0.1f, 0.5f, 200.0f);
+    // 垂直PID参数 (降低参数，提高稳定性)
+    PID_Init(&g_laser_tracker.pid_v, 2.0f, 0.01f, 0.1f, 50.0f);
 
     // 显示PID参数
-    OLED_ShowString(2, 1, "PID: Kp=8.0    ");
-    OLED_ShowString(3, 1, "Ki=0.1 Kd=0.5");
+    OLED_ShowString(2, 1, "PID: Kp=2.0    ");
+    OLED_ShowString(3, 1, "Ki=0.01 Kd=0.1");
 
     // 设置舵机初始位置为中心
     g_laser_tracker.servo_h_pos = SERVO_POS_CENTER;
