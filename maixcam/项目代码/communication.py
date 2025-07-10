@@ -114,29 +114,36 @@ class Communication:
         return data
 
     def send_position_data(self, target_pos, laser_pos):
-        """发送位置数据"""
+        """发送位置数据 - 使用与run_communication_diagnosis()相同的格式"""
         if not target_pos or not laser_pos:
             return False
 
         try:
-            # 分别发送目标位置和激光位置
-            # 发送目标位置 - 使用正确的数据包格式
+            # 使用与run_communication_diagnosis()完全相同的数据包格式
             target_x = int(target_pos[0])
             target_y = int(target_pos[1])
-            target_data = [
-                target_x & 0xFF, (target_x >> 8) & 0xFF,  # X坐标（小端）
-                target_y & 0xFF, (target_y >> 8) & 0xFF   # Y坐标（小端）
-            ]
-            target_packet = self.create_packet(self.CMD_TARGET_POSITION, target_data)
-
-            # 发送激光位置
             laser_x = int(laser_pos[0])
             laser_y = int(laser_pos[1])
-            laser_data = [
+
+            # 1. 发送目标位置 - 与run_communication_diagnosis()格式完全一致
+            target_data = bytearray([
+                0xAA, 0x55, 0x04, 0x01,  # 帧头 + 长度 + 命令
+                target_x & 0xFF, (target_x >> 8) & 0xFF,  # X坐标（小端）
+                target_y & 0xFF, (target_y >> 8) & 0xFF   # Y坐标（小端）
+            ])
+            # 校验和计算：从索引2（长度字段）开始到数据末尾
+            target_checksum = sum(target_data[2:]) & 0xFF
+            target_packet = bytes(target_data + bytearray([target_checksum]))
+
+            # 2. 发送激光位置 - 与run_communication_diagnosis()格式完全一致
+            laser_data = bytearray([
+                0xAA, 0x55, 0x04, 0x02,  # 帧头 + 长度 + 命令
                 laser_x & 0xFF, (laser_x >> 8) & 0xFF,    # X坐标（小端）
                 laser_y & 0xFF, (laser_y >> 8) & 0xFF     # Y坐标（小端）
-            ]
-            laser_packet = self.create_packet(self.CMD_LASER_POSITION, laser_data)
+            ])
+            # 校验和计算：从索引2（长度字段）开始到数据末尾
+            laser_checksum = sum(laser_data[2:]) & 0xFF
+            laser_packet = bytes(laser_data + bytearray([laser_checksum]))
 
             # 发送两个数据包
             success1 = self.send_packet(target_packet)
@@ -144,6 +151,7 @@ class Communication:
 
             if self.config.debug_mode and (success1 or success2):
                 print(f"发送位置数据 - 目标: {target_pos}, 激光: {laser_pos}")
+                print(f"校验和 - 目标: {target_checksum}, 激光: {laser_checksum}")
 
             return success1 and success2
 
