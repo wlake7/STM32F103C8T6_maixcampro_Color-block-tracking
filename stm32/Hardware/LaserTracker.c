@@ -2,6 +2,7 @@
 #include "ServoControl.h"
 #include "Timer.h"
 #include "Delay.h"
+#include "OLED.h"
 #include <string.h>
 
 /**
@@ -26,15 +27,24 @@ static uint16_t Position_ToServoPos(int16_t image_pos, uint8_t is_horizontal);
  */
 bool LaserTracker_Init(void)
 {
+    // OLED显示初始化信息
+    OLED_Clear();
+    OLED_ShowString(1, 1, "LASER TRACK MODE");
+    OLED_ShowString(2, 1, "Initializing...");
+
     // 清零追踪系统状态
     memset(&g_laser_tracker, 0, sizeof(LaserTracker_t));
 
     // 初始化PID控制器
     // 水平PID参数 (根据实际调试调整)
     PID_Init(&g_laser_tracker.pid_h, 8.0f, 0.1f, 0.5f, 200.0f);
-    
+
     // 垂直PID参数 (根据实际调试调整)
     PID_Init(&g_laser_tracker.pid_v, 8.0f, 0.1f, 0.5f, 200.0f);
+
+    // 显示PID参数
+    OLED_ShowString(2, 1, "PID: Kp=8.0    ");
+    OLED_ShowString(3, 1, "Ki=0.1 Kd=0.5");
 
     // 设置舵机初始位置为中心
     g_laser_tracker.servo_h_pos = SERVO_POS_CENTER;
@@ -44,12 +54,17 @@ bool LaserTracker_Init(void)
     Delay_ms(1000);
 
     // 舵机回到中心位置
+    OLED_ShowString(4, 1, "Centering servo");
     ServoBoard_MoveHV(SERVO_POS_CENTER, SERVO_POS_CENTER, 1000);
     Delay_ms(1500);
 
     // 激活追踪
     g_laser_tracker.tracking_active = 1;
     g_laser_tracker.last_update_time = Timer_GetSystemTick();
+
+    // 显示就绪状态
+    OLED_ShowString(2, 1, "Ready to track ");
+    OLED_ShowString(4, 1, "Waiting target ");
 
     return true;
 }
@@ -106,11 +121,31 @@ void LaserTracker_Process(void)
         // 发送舵机控制命令
         ServoBoard_MoveHV(g_laser_tracker.servo_h_pos, g_laser_tracker.servo_v_pos, 100);
 
-        // 调试输出（可选，用于诊断）
-        // 注意：在实际使用中可能需要注释掉以避免影响性能
+        // OLED实时调试显示
         static uint32_t debug_counter = 0;
-        if (++debug_counter % 10 == 0) {  // 每10次输出一次，避免过多输出
-            // 这里可以添加调试输出，但需要确保有输出方式（如LED指示或预留的调试接口）
+        if (++debug_counter % 5 == 0) {  // 每5次更新一次OLED，避免闪烁
+            // 显示目标和激光位置
+            OLED_ShowString(2, 1, "T:");
+            OLED_ShowNum(2, 3, g_laser_tracker.target_pos.x, 3);
+            OLED_ShowString(2, 6, ",");
+            OLED_ShowNum(2, 7, g_laser_tracker.target_pos.y, 3);
+
+            OLED_ShowString(2, 11, "L:");
+            OLED_ShowNum(2, 13, g_laser_tracker.laser_pos.x, 3);
+            OLED_ShowString(2, 16, ",");
+            OLED_ShowNum(2, 17, g_laser_tracker.laser_pos.y, 3);
+
+            // 显示PID输出
+            OLED_ShowString(3, 1, "PID:");
+            OLED_ShowSignedNum(3, 5, (int32_t)h_output, 3);
+            OLED_ShowString(3, 8, ",");
+            OLED_ShowSignedNum(3, 9, (int32_t)v_output, 3);
+
+            // 显示舵机位置
+            OLED_ShowString(4, 1, "Servo:");
+            OLED_ShowNum(4, 7, g_laser_tracker.servo_h_pos, 3);
+            OLED_ShowString(4, 10, ",");
+            OLED_ShowNum(4, 11, g_laser_tracker.servo_v_pos, 3);
         }
         
         // 清除有效标志，等待新数据

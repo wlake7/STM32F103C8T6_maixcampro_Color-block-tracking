@@ -15,6 +15,7 @@
 #include "CameraComm.h"
 #include "LaserTracker.h"
 #include "ServoBoard.h"
+#include "OLED.h"
 #include <string.h>
 
 /* 根据修改要求：
@@ -28,10 +29,11 @@
 #define MODE_SERVO_TEST     1   // 舵机测试模式
 #define MODE_LASER_TRACK    2   // 激光追踪模式
 #define MODE_COMM_DEBUG     3   // 通信调试模式
-#define MODE_DEBUG          4   // 调试模式 (预留)
+#define MODE_SERVO_DEBUG    4   // 舵机专项调试模式
+#define MODE_DEBUG          5   // 调试模式 (预留)
 
 /* 当前运行模式 */
-#define CURRENT_MODE        MODE_COMM_DEBUG
+#define CURRENT_MODE        MODE_SERVO_DEBUG
 
 /* 舵机控制板协议常量 */
 #define SERVO_HEADER1       0x55
@@ -82,6 +84,9 @@ static void ServoTest_Init(void);
 #elif CURRENT_MODE == MODE_COMM_DEBUG
 static void CommDebug_Process(void);
 static void CommDebug_Init(void);
+#elif CURRENT_MODE == MODE_SERVO_DEBUG
+static void ServoDebug_Process(void);
+static void ServoDebug_Init(void);
 #endif
 
 /**
@@ -153,6 +158,24 @@ int main(void)
         Delay_ms(100);  // 10Hz主循环
     }
 
+#elif CURRENT_MODE == MODE_SERVO_DEBUG
+    // 舵机专项调试初始化
+    ServoDebug_Init();
+
+    // 主循环
+    while (1) {
+        ServoDebug_Process();
+
+        // LED心跳指示
+        static uint32_t last_led_time = 0;
+        if ((System_GetTick() - last_led_time) > 1000) {
+            last_led_time = System_GetTick();
+            LED_Toggle();
+        }
+
+        Delay_ms(1000);  // 1Hz主循环，便于观察
+    }
+
 #endif
 
     return 0;
@@ -172,12 +195,31 @@ static void System_Init(void)
     // LED初始化
     LED_Init();
 
+    // OLED初始化
+    OLED_Init();
+    OLED_Clear();
+    OLED_ShowString(1, 1, "STM32 Laser Track");
+    OLED_ShowString(2, 1, "Initializing...");
+
     // 舵机控制板初始化
     ServoBoard_Init();
 
 #if CURRENT_MODE == MODE_LASER_TRACK || CURRENT_MODE == MODE_COMM_DEBUG
     // 摄像头通信初始化
     CameraComm_Init();
+#endif
+
+    // 显示初始化完成
+    OLED_ShowString(2, 1, "Init Complete   ");
+    OLED_ShowString(3, 1, "Mode: ");
+#if CURRENT_MODE == MODE_SERVO_TEST
+    OLED_ShowString(3, 7, "SERVO_TEST");
+#elif CURRENT_MODE == MODE_LASER_TRACK
+    OLED_ShowString(3, 7, "LASER_TRACK");
+#elif CURRENT_MODE == MODE_COMM_DEBUG
+    OLED_ShowString(3, 7, "COMM_DEBUG");
+#elif CURRENT_MODE == MODE_SERVO_DEBUG
+    OLED_ShowString(3, 7, "SERVO_DEBUG");
 #endif
 
     g_system_initialized = 1;
@@ -345,12 +387,30 @@ static uint32_t g_last_laser_x = 0, g_last_laser_y = 0;
  */
 static void CommDebug_Init(void)
 {
+    // OLED显示调试模式信息
+    OLED_Clear();
+    OLED_ShowString(1, 1, "COMM DEBUG MODE");
+    OLED_ShowString(2, 1, "Waiting data...");
+    OLED_ShowString(3, 1, "RX: 0");
+    OLED_ShowString(4, 1, "Servo: 500,500");
+
+    // 启用舵机OLED调试
+    ServoBoard_EnableOLEDDebug(true);
+
     // 初始化摄像头通信
     CameraComm_Init();
 
     // 舵机回到中心位置
+    OLED_ShowString(2, 1, "Servo centering");
     ServoBoard_ReturnToCenter();
-    Delay_ms(1000);
+    Delay_ms(2000);  // 延长等待时间，观察OLED显示
+
+    // 显示就绪状态
+    OLED_Clear();
+    OLED_ShowString(1, 1, "COMM DEBUG READY");
+    OLED_ShowString(2, 1, "Waiting MaixCam");
+    OLED_ShowString(3, 1, "RX: 0");
+    OLED_ShowString(4, 1, "Servo: 500,500");
 
     // LED指示初始化完成
     LED_SetState(1);
@@ -393,8 +453,31 @@ static void CommDebug_Process(void)
         if (servo_h > 1000) servo_h = 1000;
         if (servo_v > 1000) servo_v = 1000;
 
+        // 实时更新OLED显示
+        OLED_ShowString(2, 1, "Data received! ");
+        OLED_ShowString(3, 1, "RX:");
+        OLED_ShowNum(3, 4, g_received_packets, 4);
+
+        // 显示目标位置
+        OLED_ShowString(4, 1, "T:");
+        OLED_ShowNum(4, 3, camera_data.target.x, 3);
+        OLED_ShowString(4, 6, ",");
+        OLED_ShowNum(4, 7, camera_data.target.y, 3);
+
+        // 显示激光位置
+        OLED_ShowString(4, 10, "L:");
+        OLED_ShowNum(4, 12, camera_data.laser.x, 3);
+        OLED_ShowString(4, 15, ",");
+        OLED_ShowNum(4, 16, camera_data.laser.y, 3);
+
         // 发送舵机命令
         ServoBoard_MoveHV(servo_h, servo_v, 200);
+
+        // 显示舵机位置
+        OLED_ShowString(3, 9, "S:");
+        OLED_ShowNum(3, 11, servo_h, 3);
+        OLED_ShowString(3, 14, ",");
+        OLED_ShowNum(3, 15, servo_v, 3);
 
         // LED闪烁指示收到数据
         LED_SetState(1);
@@ -432,6 +515,124 @@ static void CommDebug_Process(void)
             Delay_ms(300);
         }
     }
+}
+
+#endif
+
+#if CURRENT_MODE == MODE_SERVO_DEBUG
+
+/* 舵机调试相关变量 */
+static uint32_t g_servo_test_step = 0;
+static uint32_t g_servo_test_count = 0;
+
+/**
+ * @brief 舵机专项调试初始化
+ */
+static void ServoDebug_Init(void)
+{
+    // OLED显示调试模式信息
+    OLED_Clear();
+    OLED_ShowString(1, 1, "SERVO DEBUG MODE");
+    OLED_ShowString(2, 1, "Testing servo...");
+    OLED_ShowString(3, 1, "Step: 0");
+    OLED_ShowString(4, 1, "Count: 0");
+
+    // 启用舵机OLED调试
+    ServoBoard_EnableOLEDDebug(true);
+
+    // 舵机回到中心位置
+    OLED_ShowString(2, 1, "Centering...   ");
+    ServoBoard_ReturnToCenter();
+    Delay_ms(2000);
+
+    // 显示就绪状态
+    OLED_ShowString(2, 1, "Ready to test  ");
+
+    // LED指示初始化完成
+    for (int i = 0; i < 3; i++) {
+        LED_SetState(1);
+        Delay_ms(200);
+        LED_SetState(0);
+        Delay_ms(200);
+    }
+}
+
+/**
+ * @brief 舵机专项调试处理函数
+ */
+static void ServoDebug_Process(void)
+{
+    g_servo_test_count++;
+
+    // 更新OLED显示
+    OLED_ShowString(3, 1, "Step:");
+    OLED_ShowNum(3, 6, g_servo_test_step, 2);
+    OLED_ShowString(4, 1, "Count:");
+    OLED_ShowNum(4, 7, g_servo_test_count, 4);
+
+    switch (g_servo_test_step) {
+        case 0:
+            // 测试中心位置
+            OLED_ShowString(2, 1, "Test: CENTER   ");
+            ServoBoard_MoveHV(500, 500, 1000);
+            break;
+
+        case 1:
+            // 测试左上角
+            OLED_ShowString(2, 1, "Test: LEFT-UP  ");
+            ServoBoard_MoveHV(200, 200, 1000);
+            break;
+
+        case 2:
+            // 测试右上角
+            OLED_ShowString(2, 1, "Test: RIGHT-UP ");
+            ServoBoard_MoveHV(800, 200, 1000);
+            break;
+
+        case 3:
+            // 测试右下角
+            OLED_ShowString(2, 1, "Test: RIGHT-DN ");
+            ServoBoard_MoveHV(800, 800, 1000);
+            break;
+
+        case 4:
+            // 测试左下角
+            OLED_ShowString(2, 1, "Test: LEFT-DN  ");
+            ServoBoard_MoveHV(200, 800, 1000);
+            break;
+
+        case 5:
+            // 测试水平扫描
+            OLED_ShowString(2, 1, "Test: H-SCAN   ");
+            ServoBoard_MoveHV(100 + (g_servo_test_count % 800), 500, 200);
+            break;
+
+        case 6:
+            // 测试垂直扫描
+            OLED_ShowString(2, 1, "Test: V-SCAN   ");
+            ServoBoard_MoveHV(500, 100 + (g_servo_test_count % 800), 200);
+            break;
+
+        default:
+            // 回到中心，重新开始
+            OLED_ShowString(2, 1, "Test: RESTART  ");
+            ServoBoard_MoveHV(500, 500, 1000);
+            g_servo_test_step = 0;
+            return;
+    }
+
+    // 每10次循环切换到下一个测试步骤
+    if (g_servo_test_count % 10 == 0) {
+        g_servo_test_step++;
+        if (g_servo_test_step > 6) {
+            g_servo_test_step = 0;
+        }
+    }
+
+    // LED闪烁指示活动
+    LED_SetState(1);
+    Delay_ms(50);
+    LED_SetState(0);
 }
 
 #endif

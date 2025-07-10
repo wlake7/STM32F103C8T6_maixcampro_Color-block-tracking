@@ -139,6 +139,12 @@ bool ServoBoard_MoveMultiServos(ServoMoveParam_t* servos, uint8_t count);
 bool ServoBoard_MoveHV(uint16_t h_position, uint16_t v_position, uint16_t time);
 
 /**
+ * @brief 启用/禁用OLED调试显示
+ * @param enable true: 启用, false: 禁用
+ */
+void ServoBoard_EnableOLEDDebug(bool enable);
+
+/**
  * @brief 根据PID输出控制舵机
  * @param pid_output_h 水平PID输出
  * @param pid_output_v 垂直PID输出

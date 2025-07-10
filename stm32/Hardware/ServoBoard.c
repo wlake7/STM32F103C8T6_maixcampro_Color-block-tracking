@@ -7,6 +7,7 @@
 
 #include "ServoBoard.h"
 #include "Delay.h"
+#include "OLED.h"
 #include <string.h>
 
 /* 全局变量定义 */
@@ -19,12 +20,24 @@ static bool packet_received = false;
 static uint32_t last_receive_time = 0;
 static uint32_t last_send_time = 0;
 
+/* OLED调试显示控制 */
+static bool oled_debug_enabled = false;
+static uint32_t servo_command_count = 0;
+
 /* 私有函数声明 */
 static void ServoBoard_USART2_Init(void);
 static void ServoBoard_SendByte(uint8_t data);
 static bool ServoBoard_SendPacket(uint8_t command, uint8_t* data, uint8_t data_len);
 //static bool ServoBoard_WaitResponse(uint8_t expected_cmd, uint32_t timeout_ms);
 static void ServoBoard_ParsePacket(uint8_t* packet, uint8_t length);
+
+/**
+ * @brief 启用OLED调试显示
+ */
+void ServoBoard_EnableOLEDDebug(bool enable)
+{
+    oled_debug_enabled = enable;
+}
 
 /**
  * @brief 初始化舵机控制板通信模块
@@ -242,7 +255,23 @@ bool ServoBoard_MoveHV(uint16_t h_position, uint16_t v_position, uint16_t time)
         g_servo_board_system.stats.packets_sent++;
         g_servo_board_system.current_h_position = h_position;
         g_servo_board_system.current_v_position = v_position;
-        
+        servo_command_count++;
+
+        // OLED调试显示
+        if (oled_debug_enabled) {
+            // 显示舵机命令发送状态
+            OLED_ShowString(1, 1, "SERVO CMD SENT");
+            OLED_ShowString(2, 1, "H:");
+            OLED_ShowNum(2, 3, h_position, 4);
+            OLED_ShowString(2, 8, "V:");
+            OLED_ShowNum(2, 10, v_position, 4);
+            OLED_ShowString(3, 1, "Time:");
+            OLED_ShowNum(3, 6, time, 4);
+            OLED_ShowString(3, 11, "ms");
+            OLED_ShowString(4, 1, "Count:");
+            OLED_ShowNum(4, 7, servo_command_count, 5);
+        }
+
         SERVO_BOARD_DEBUG("Move HV: H=%d, V=%d, T=%dms", h_position, v_position, time);
     } else {
         g_servo_board_system.stats.packets_error++;
