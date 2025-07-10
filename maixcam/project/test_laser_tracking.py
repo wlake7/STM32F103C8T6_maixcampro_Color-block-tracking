@@ -3,8 +3,8 @@
 验证激光追踪模式下的通信是否正确
 """
 
-from maixcam.项目代码.config import Config
-from maixcam.项目代码.communication import Communication
+from config import Config
+from communication import Communication
 import time
 
 def test_communication():

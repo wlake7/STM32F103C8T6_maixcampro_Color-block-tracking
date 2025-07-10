@@ -5,9 +5,9 @@
 """
 
 from maix import app, time, pinmap
-from maixcam.项目代码.laser_tracker import LaserTracker
+from laser_tracker import LaserTracker
 from config import Config
-from maixcam.项目代码.run_config import get_run_mode, print_mode_info
+from run_config import get_run_mode, print_mode_info
 
 def run_laser_tracking():
     """运行激光追踪模式"""
@@ -114,7 +114,7 @@ def run_camera_test():
 
     try:
         from maix import image
-        from maixcam.项目代码.image_processor import ImageProcessor
+        from image_processor import ImageProcessor
         config = Config()
 
         processor = ImageProcessor(config)
