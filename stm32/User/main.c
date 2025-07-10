@@ -33,7 +33,7 @@
 #define MODE_DEBUG          5   // 调试模式 (预留)
 
 /* 当前运行模式 */
-#define CURRENT_MODE        MODE_SERVO_DEBUG
+#define CURRENT_MODE        MODE_COMM_DEBUG
 
 /* 舵机控制板协议常量 */
 #define SERVO_HEADER1       0x55
@@ -427,62 +427,85 @@ static void CommDebug_Init(void)
  */
 static void CommDebug_Process(void)
 {
-    // 检查是否有新的摄像头数据
-    TrackingData_t camera_data;
-    if (CameraComm_GetLatestData(&camera_data)) {
-        g_received_packets++;
+    // 首先处理摄像头通信数据
+    CameraComm_Process();
 
-        // 检查数据类型并统计
-        if (camera_data.target.x != g_last_target_x || camera_data.target.y != g_last_target_y) {
-            g_target_packets++;
-            g_last_target_x = camera_data.target.x;
-            g_last_target_y = camera_data.target.y;
+    // 检查通信状态
+    bool comm_ok = CameraComm_IsCommOK();
+    CameraCommStats_t* stats = CameraComm_GetStats();
+
+    // 更新OLED显示通信状态
+    static uint32_t last_display_update = 0;
+    uint32_t current_time = System_GetTick();
+
+    if ((current_time - last_display_update) > 200) {  // 每200ms更新一次显示
+        last_display_update = current_time;
+
+        // 第1行：通信状态
+        if (comm_ok) {
+            OLED_ShowString(1, 1, "COMM: OK      ");
+        } else {
+            OLED_ShowString(1, 1, "COMM: TIMEOUT ");
         }
 
-        if (camera_data.laser.x != g_last_laser_x || camera_data.laser.y != g_last_laser_y) {
-            g_laser_packets++;
-            g_last_laser_x = camera_data.laser.x;
-            g_last_laser_y = camera_data.laser.y;
+        // 第2行：接收统计
+        OLED_ShowString(2, 1, "RX:");
+        OLED_ShowNum(2, 4, stats->packets_received, 4);
+        OLED_ShowString(2, 9, "ERR:");
+        OLED_ShowNum(2, 13, stats->parse_errors, 3);
+
+        // 第3行和第4行：最新数据
+        TrackingData_t camera_data;
+        if (CameraComm_GetLatestData(&camera_data)) {
+            // 第3行：目标位置
+            OLED_ShowString(3, 1, "T:");
+            if (camera_data.target.valid) {
+                OLED_ShowSignedNum(3, 3, camera_data.target.x, 3);
+                OLED_ShowString(3, 6, ",");
+                OLED_ShowSignedNum(3, 7, camera_data.target.y, 3);
+            } else {
+                OLED_ShowString(3, 3, "---,---");
+            }
+
+            // 第4行：激光位置
+            OLED_ShowString(4, 1, "L:");
+            if (camera_data.laser.valid) {
+                OLED_ShowSignedNum(4, 3, camera_data.laser.x, 3);
+                OLED_ShowString(4, 6, ",");
+                OLED_ShowSignedNum(4, 7, camera_data.laser.y, 3);
+            } else {
+                OLED_ShowString(4, 3, "---,---");
+            }
+
+            // 如果有有效数据，进行舵机测试
+            if (camera_data.target.valid) {
+                // 简单的舵机响应测试：根据目标位置移动舵机
+                uint16_t servo_h = (uint16_t)((float)camera_data.target.x * 1000.0f / 640.0f);
+                uint16_t servo_v = (uint16_t)((float)camera_data.target.y * 1000.0f / 480.0f);
+
+                // 限幅
+                if (servo_h > 1000) servo_h = 1000;
+                if (servo_v > 1000) servo_v = 1000;
+
+                // 发送舵机命令
+                ServoBoard_MoveHV(servo_h, servo_v, 200);
+
+                // 显示舵机位置
+                OLED_ShowString(3, 11, "S:");
+                OLED_ShowNum(3, 13, servo_h, 3);
+                OLED_ShowString(4, 11, "S:");
+                OLED_ShowNum(4, 13, servo_v, 3);
+
+                // LED闪烁指示收到数据
+                LED_SetState(1);
+                Delay_ms(10);
+                LED_SetState(0);
+            }
+        } else {
+            // 没有数据时显示等待状态
+            OLED_ShowString(3, 1, "T: Waiting... ");
+            OLED_ShowString(4, 1, "L: Waiting... ");
         }
-
-        // 简单的舵机响应测试：根据目标位置移动舵机
-        uint16_t servo_h = (uint16_t)((float)camera_data.target.x * 1000.0f / 640.0f);
-        uint16_t servo_v = (uint16_t)((float)camera_data.target.y * 1000.0f / 480.0f);
-
-        // 限幅
-        if (servo_h > 1000) servo_h = 1000;
-        if (servo_v > 1000) servo_v = 1000;
-
-        // 实时更新OLED显示
-        OLED_ShowString(2, 1, "Data received! ");
-        OLED_ShowString(3, 1, "RX:");
-        OLED_ShowNum(3, 4, g_received_packets, 4);
-
-        // 显示目标位置
-        OLED_ShowString(4, 1, "T:");
-        OLED_ShowNum(4, 3, camera_data.target.x, 3);
-        OLED_ShowString(4, 6, ",");
-        OLED_ShowNum(4, 7, camera_data.target.y, 3);
-
-        // 显示激光位置
-        OLED_ShowString(4, 10, "L:");
-        OLED_ShowNum(4, 12, camera_data.laser.x, 3);
-        OLED_ShowString(4, 15, ",");
-        OLED_ShowNum(4, 16, camera_data.laser.y, 3);
-
-        // 发送舵机命令
-        ServoBoard_MoveHV(servo_h, servo_v, 200);
-
-        // 显示舵机位置
-        OLED_ShowString(3, 9, "S:");
-        OLED_ShowNum(3, 11, servo_h, 3);
-        OLED_ShowString(3, 14, ",");
-        OLED_ShowNum(3, 15, servo_v, 3);
-
-        // LED闪烁指示收到数据
-        LED_SetState(1);
-        Delay_ms(10);
-        LED_SetState(0);
     }
 
     // 每5秒输出统计信息（通过LED闪烁模式）

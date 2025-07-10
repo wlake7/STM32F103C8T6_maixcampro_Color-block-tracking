@@ -52,12 +52,8 @@ def run_communication_diagnosis():
         from maix import uart
         import struct
 
-        # 配置串口2引脚映射
-        pinmap.set_pin_function("A29", "UART2_RX")
-        pinmap.set_pin_function("A28", "UART2_TX")
-
-        # 初始化串口2
-        device = "/dev/ttyS2"
+        # 初始化串口1
+        device = "/dev/ttyS1"
         serial = uart.UART(device, 115200)
         print(f"✓ UART初始化成功: {device}@115200")
 
@@ -160,9 +156,9 @@ def main():
     # 获取运行模式
     run_mode = get_run_mode()
 
-    # 配置串口2引脚映射（所有模式都需要）
-    pinmap.set_pin_function("A29", "UART2_RX")
-    pinmap.set_pin_function("A28", "UART2_TX")
+    # 配置串口1引脚映射（所有模式都需要）
+    pinmap.set_pin_function("A18", "UART1_RX")
+    pinmap.set_pin_function("A19", "UART1_TX")
 
     try:
         if run_mode == 1:

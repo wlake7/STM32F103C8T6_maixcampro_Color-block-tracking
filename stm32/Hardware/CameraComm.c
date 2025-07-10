@@ -201,36 +201,58 @@ static void CameraComm_ParsePacket(uint8_t* packet, uint8_t length)
 
     switch (command) {
         case CMD_TARGET_POSITION:
-            if (data_len >= 12) {  // target_x(2) + target_y(2) + laser_x(2) + laser_y(2) + confidence(2) + timestamp(2)
-                // 解析目标和激光位置数据
+            if (data_len >= 4) {  // target_x(2) + target_y(2)
+                // 解析目标位置数据
                 g_camera_comm_system.latest_data.target.x = (int16_t)(data[0] | (data[1] << 8));
                 g_camera_comm_system.latest_data.target.y = (int16_t)(data[2] | (data[3] << 8));
-                g_camera_comm_system.latest_data.laser.x = (int16_t)(data[4] | (data[5] << 8));
-                g_camera_comm_system.latest_data.laser.y = (int16_t)(data[6] | (data[7] << 8));
-                g_camera_comm_system.latest_data.target.confidence = data[8] | (data[9] << 8);
-                g_camera_comm_system.latest_data.target.timestamp = data[10] | (data[11] << 8);
-                
-                // 设置数据有效性
-                g_camera_comm_system.latest_data.target.valid = true;
-                g_camera_comm_system.latest_data.laser.valid = true;
-                g_camera_comm_system.latest_data.both_detected = true;
-                g_camera_comm_system.latest_data.frame_id++;
-                
-                // 更新时间戳
-                g_camera_comm_system.last_data_time = System_GetTick();
-                new_data_flag = true;
 
-                // 更新激光追踪器的位置数据
+                // 设置目标数据有效性
+                g_camera_comm_system.latest_data.target.valid = true;
+                g_camera_comm_system.latest_data.target.confidence = 100;  // 默认置信度
+                g_camera_comm_system.latest_data.target.timestamp = System_GetTick() & 0xFFFF;
+
+                // 更新激光追踪器的目标位置
                 LaserTracker_UpdateTargetPosition(g_camera_comm_system.latest_data.target.x,
                                                  g_camera_comm_system.latest_data.target.y);
+
+                CAMERA_COMM_DEBUG("Received target position: (%d,%d)",
+                    g_camera_comm_system.latest_data.target.x,
+                    g_camera_comm_system.latest_data.target.y);
+
+                // 更新统计信息
+                g_camera_comm_system.stats.packets_received++;
+                last_receive_time = System_GetTick();
+            }
+            break;
+
+        case CMD_LASER_POSITION:
+            if (data_len >= 4) {  // laser_x(2) + laser_y(2)
+                // 解析激光位置数据
+                g_camera_comm_system.latest_data.laser.x = (int16_t)(data[0] | (data[1] << 8));
+                g_camera_comm_system.latest_data.laser.y = (int16_t)(data[2] | (data[3] << 8));
+
+                // 设置激光数据有效性
+                g_camera_comm_system.latest_data.laser.valid = true;
+
+                // 检查是否同时有目标和激光数据
+                if (g_camera_comm_system.latest_data.target.valid) {
+                    g_camera_comm_system.latest_data.both_detected = true;
+                    g_camera_comm_system.latest_data.frame_id++;
+                    g_camera_comm_system.last_data_time = System_GetTick();
+                    new_data_flag = true;
+                }
+
+                // 更新激光追踪器的激光位置
                 LaserTracker_UpdateLaserPosition(g_camera_comm_system.latest_data.laser.x,
                                                 g_camera_comm_system.latest_data.laser.y);
 
-                CAMERA_COMM_DEBUG("Received position data: target(%d,%d) laser(%d,%d)",
-                    g_camera_comm_system.latest_data.target.x,
-                    g_camera_comm_system.latest_data.target.y,
+                CAMERA_COMM_DEBUG("Received laser position: (%d,%d)",
                     g_camera_comm_system.latest_data.laser.x,
                     g_camera_comm_system.latest_data.laser.y);
+
+                // 更新统计信息
+                g_camera_comm_system.stats.packets_received++;
+                last_receive_time = System_GetTick();
             }
             break;
 

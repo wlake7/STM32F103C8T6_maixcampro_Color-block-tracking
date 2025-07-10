@@ -37,7 +37,7 @@ class Config:
         self.corner_points = []  # 四个角点坐标，在标定时设置
 
         # 通信配置
-        self.uart_port = "/dev/ttyS2"  # 串口2 (根据用户要求)
+        self.uart_port = "/dev/ttyS1"  # 串口1 (与STM32 USART1对应)
         self.uart_baudrate = 115200
         self.uart_timeout = 2000  # 毫秒，与官方例程保持一致
 
