@@ -40,8 +40,8 @@ class Communication:
         try:
             from maix import uart
 
-            # 使用串口0
-            device = "/dev/ttyS0"  # 串口0
+            # 使用串口2
+            device = "/dev/ttyS2"  # 串口2
             if self.config.uart_port:
                 device = self.config.uart_port
 

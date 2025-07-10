@@ -4,7 +4,7 @@
 支持多种运行模式：正常追踪、通信诊断、功能测试
 """
 
-from maix import app, time
+from maix import app, time, pinmap
 from laser_tracker import LaserTracker
 from config import Config
 from run_config import get_run_mode, print_mode_info
@@ -52,21 +52,10 @@ def run_communication_diagnosis():
         from maix import uart
         import struct
 
-        # 初始化串口0
-        device = "/dev/ttyS0"
+        # 初始化串口2
+        device = "/dev/ttyS2"
         serial = uart.UART(device, 115200)
         print(f"✓ UART初始化成功: {device}@115200")
-
-        # 等待并清除开机日志
-        print("等待开机日志结束...")
-        time.sleep(3)  # 等待开机日志完成
-
-        # 清空接收缓冲区，丢弃开机日志
-        while True:
-            data = serial.read(timeout=100)
-            if not data:
-                break
-        print("✓ 开机日志已清除")
 
         print("开始发送测试数据...")
 
@@ -81,21 +70,31 @@ def run_communication_diagnosis():
             laser_y = target_y - 15 + int(8 * (i % 4))
 
             # 发送目标位置
-            target_packet = bytes([
-                0xAA, 0x55, 0x04, 0x01,
-                target_x & 0xFF, (target_x >> 8) & 0xFF,
-                target_y & 0xFF, (target_y >> 8) & 0xFF
+            # 数据包格式: [0xAA, 0x55, Length, Command, Data..., Checksum]
+            # Length = 纯数据长度（不包含命令）
+            target_payload = bytes([
+                0x04,  # 数据长度（4字节坐标数据）
+                0x01,  # 命令：目标位置
+                target_x & 0xFF, (target_x >> 8) & 0xFF,  # X坐标（小端）
+                target_y & 0xFF, (target_y >> 8) & 0xFF   # Y坐标（小端）
             ])
+            # 计算校验和（从长度字节开始到数据结束）
+            checksum = sum(target_payload) & 0xFF
+            target_packet = bytes([0xAA, 0x55]) + target_payload + bytes([checksum])
             serial.write(target_packet)
 
             time.sleep(0.02)
 
             # 发送激光位置
-            laser_packet = bytes([
-                0xAA, 0x55, 0x04, 0x02,
-                laser_x & 0xFF, (laser_x >> 8) & 0xFF,
-                laser_y & 0xFF, (laser_y >> 8) & 0xFF
+            laser_payload = bytes([
+                0x04,  # 数据长度（4字节坐标数据）
+                0x02,  # 命令：激光位置
+                laser_x & 0xFF, (laser_x >> 8) & 0xFF,   # X坐标（小端）
+                laser_y & 0xFF, (laser_y >> 8) & 0xFF    # Y坐标（小端）
             ])
+            # 计算校验和（从长度字节开始到数据结束）
+            checksum = sum(laser_payload) & 0xFF
+            laser_packet = bytes([0xAA, 0x55]) + laser_payload + bytes([checksum])
             serial.write(laser_packet)
 
             print(f"第{i+1:2d}组: 目标({target_x:3d},{target_y:3d}) 激光({laser_x:3d},{laser_y:3d})")
@@ -167,9 +166,9 @@ def main():
     # 获取运行模式
     run_mode = get_run_mode()
 
-    # 串口0默认可用，不需要引脚映射
-    # pinmap.set_pin_function("A16", "UART0_TX")  # 默认已配置
-    # pinmap.set_pin_function("A17", "UART0_RX")  # 默认已配置
+    # 配置串口2引脚映射（所有模式都需要）
+    pinmap.set_pin_function("A29", "UART2_RX")
+    pinmap.set_pin_function("A28", "UART2_TX")
 
     try:
         if run_mode == 1:
