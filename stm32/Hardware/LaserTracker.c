@@ -4,6 +4,7 @@
 #include "Delay.h"
 #include "OLED.h"
 #include <string.h>
+#include <math.h>
 
 /**
  * @file LaserTracker.c
@@ -94,16 +95,22 @@ void LaserTracker_Process(void)
     
     // 检查是否有新的位置数据
     if (g_laser_tracker.target_pos.valid && g_laser_tracker.laser_pos.valid) {
+        // 更新最后更新时间
+        g_laser_tracker.last_update_time = System_GetTick();
+        // 计算位置误差
+        float error_x = (float)g_laser_tracker.target_pos.x - (float)g_laser_tracker.laser_pos.x;
+        float error_y = (float)g_laser_tracker.target_pos.y - (float)g_laser_tracker.laser_pos.y;
+
+        // 添加死区处理，避免小误差引起抖动
+        if (fabs(error_x) < 10.0f) error_x = 0.0f;
+        if (fabs(error_y) < 10.0f) error_y = 0.0f;
+
         // 计算水平方向PID输出
-        // 目标：让激光位置接近目标位置，所以setpoint是目标位置，measured是激光位置
-        float h_output = PID_Calculate(&g_laser_tracker.pid_h,
-                                      (float)g_laser_tracker.target_pos.x,
-                                      (float)g_laser_tracker.laser_pos.x);
+        // 注意：PID输出直接作为舵机位置的调整量
+        float h_output = PID_Calculate(&g_laser_tracker.pid_h, 0.0f, -error_x);
 
         // 计算垂直方向PID输出
-        float v_output = PID_Calculate(&g_laser_tracker.pid_v,
-                                      (float)g_laser_tracker.target_pos.y,
-                                      (float)g_laser_tracker.laser_pos.y);
+        float v_output = PID_Calculate(&g_laser_tracker.pid_v, 0.0f, -error_y);
         
         // 更新舵机位置
         int16_t new_h_pos = (int16_t)g_laser_tracker.servo_h_pos + (int16_t)h_output;
@@ -123,7 +130,7 @@ void LaserTracker_Process(void)
 
         // OLED实时调试显示
         static uint32_t debug_counter = 0;
-        if (++debug_counter % 5 == 0) {  // 每5次更新一次OLED，避免闪烁
+        if (++debug_counter % 3 == 0) {  // 每3次更新一次OLED，提高刷新率
             // 显示目标和激光位置
             OLED_ShowString(2, 1, "T:");
             OLED_ShowNum(2, 3, g_laser_tracker.target_pos.x, 3);
@@ -135,11 +142,11 @@ void LaserTracker_Process(void)
             OLED_ShowString(2, 16, ",");
             OLED_ShowNum(2, 17, g_laser_tracker.laser_pos.y, 3);
 
-            // 显示PID输出
-            OLED_ShowString(3, 1, "PID:");
-            OLED_ShowSignedNum(3, 5, (int32_t)h_output, 3);
+            // 显示误差信息
+            OLED_ShowString(3, 1, "Err:");
+            OLED_ShowSignedNum(3, 5, (int32_t)error_x, 3);
             OLED_ShowString(3, 8, ",");
-            OLED_ShowSignedNum(3, 9, (int32_t)v_output, 3);
+            OLED_ShowSignedNum(3, 9, (int32_t)error_y, 3);
 
             // 显示舵机位置
             OLED_ShowString(4, 1, "Servo:");
@@ -148,20 +155,17 @@ void LaserTracker_Process(void)
             OLED_ShowNum(4, 11, g_laser_tracker.servo_v_pos, 3);
         }
         
-        // 清除有效标志，等待新数据
-        g_laser_tracker.target_pos.valid = 0;
-        g_laser_tracker.laser_pos.valid = 0;
-        
-        g_laser_tracker.last_update_time = current_time;
+        // 保持数据有效标志，避免数据丢失导致回中
+        // g_laser_tracker.target_pos.valid = 0;
+        // g_laser_tracker.laser_pos.valid = 0;
     }
     
-    // 超时检测（1秒无数据则停止追踪）
-    if ((current_time - g_laser_tracker.last_update_time) > 1000) {
-        if (g_laser_tracker.tracking_active) {
-            // 回到中心位置
-            ServoBoard_MoveHV(SERVO_POS_CENTER, SERVO_POS_CENTER, 500);
-            g_laser_tracker.servo_h_pos = SERVO_POS_CENTER;
-            g_laser_tracker.servo_v_pos = SERVO_POS_CENTER;
+    // 超时检测（5秒无数据则显示警告，但不自动回中）
+    if (g_laser_tracker.last_update_time > 0 &&
+        (current_time - g_laser_tracker.last_update_time) > 5000) {
+        static uint32_t warning_counter = 0;
+        if (++warning_counter % 10 == 0) {  // 每10次显示一次警告
+            OLED_ShowString(1, 1, "NO DATA 5s+    ");
         }
     }
 }

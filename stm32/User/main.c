@@ -137,7 +137,7 @@ int main(void)
             LED_Toggle();
         }
 
-        Delay_ms(50);  // 20Hz主循环
+        Delay_ms(20);  // 50Hz主循环，提高响应速度
     }
 
 #elif CURRENT_MODE == MODE_COMM_DEBUG
