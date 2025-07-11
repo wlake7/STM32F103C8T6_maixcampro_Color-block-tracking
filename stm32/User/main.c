@@ -123,15 +123,7 @@ int main(void)
     while (1) {
         CameraComm_Process(); // 处理摄像头通信数据，解析出坐标，无状态量赋值、赋有效标准g_laser_tracker.target_pos.valid 
         LaserTracker_Process();
-
-        // LED心跳指示
-        static uint32_t last_led_time = 0;
-        if ((System_GetTick() - last_led_time) > 1000) {
-            last_led_time = System_GetTick();
-            LED_Toggle();
-        }
-
-        Delay_ms(20);  // 50Hz主循环，提高响应速度
+        //Delay_ms(CONTROL_FREQUENCY);  
     }
 
 #elif CURRENT_MODE == MODE_COMM_DEBUG

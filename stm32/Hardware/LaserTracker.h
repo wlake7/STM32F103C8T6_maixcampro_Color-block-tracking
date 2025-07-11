@@ -38,8 +38,8 @@ typedef struct {
     Position_t laser_pos;       // 绿色激光位置
     PID_Controller_t pid_h;     // 水平PID控制器
     PID_Controller_t pid_v;     // 垂直PID控制器
-    uint16_t servo_h_pos;       // 水平舵机位置
-    uint16_t servo_v_pos;       // 垂直舵机位置
+    float servo_h_angle;        // 水平舵机角度 (0°-240°)
+    float servo_v_angle;        // 垂直舵机角度 (0°-240°)
     uint8_t tracking_active;    // 追踪激活标志
     uint32_t last_update_time;  // 上次更新时间
 } LaserTracker_t;
@@ -50,55 +50,60 @@ typedef struct {
 #define IMAGE_CENTER_X      (IMAGE_WIDTH / 2)
 #define IMAGE_CENTER_Y      (IMAGE_HEIGHT / 2)
 
-/* 舵机位置范围 */
-#define SERVO_POS_MIN       0
-#define SERVO_POS_MAX       1000
+
 #define SERVO_POS_CENTER    500
-
+/*=========================================================================================*/
 /* PID控制参数宏定义 - 便于调试 */
-#define PID_KP_H            2.0f        // 水平轴比例增益
-#define PID_KI_H            0.01f       // 水平轴积分增益
-#define PID_KD_H            0.1f        // 水平轴微分增益
-#define PID_KP_V            2.0f        // 垂直轴比例增益
-#define PID_KI_V            0.01f       // 垂直轴积分增益
-#define PID_KD_V            0.1f        // 垂直轴微分增益
-#define PID_MAX_OUTPUT      50.0f       // PID输出限幅
-#define PID_MAX_INTEGRAL    25.0f       // PID积分限幅 (输出限幅的50%)
-
+#define PID_KP_H            0.6f        // 水平轴比例增益
+#define PID_KI_H            0.0f       // 水平轴积分增益
+#define PID_KD_H            0.0f        // 水平轴微分增益
+#define PID_KP_V            0.6f        // 垂直轴比例增益
+#define PID_KI_V            0.0f       // 垂直轴积分增益
+#define PID_KD_V            0.0f        // 垂直轴微分增益
+#define PID_MAX_OUTPUT      10.0f       // PID输出限幅 (角度增量，度)
+#define PID_MAX_INTEGRAL    5.0f        // PID积分限幅 (输出限幅的50%)
 /* 控制算法参数宏定义 - 便于调试 */
-#define DEADZONE_PIXELS     3.0f        // 死区像素数，避免小误差抖动
-#define MAX_SERVO_INCREMENT 20.0f       // 舵机最大单次位置增量
+#define DEADZONE_PIXELS     200.0f        // 死区像素数，避免小误差抖动
+#define MAX_SERVO_INCREMENT 10.0f        // 舵机最大单次角度增量 (度)
 #define SERVO_MOVE_TIME     50          // 舵机移动时间(ms) - 快速响应
-
+#define SERVO_RESPONSE_GAIN 0.07f        // 舵机响应增益 (0.0-1.0)
 /* 系统控制参数宏定义 - 便于调试 */
-#define CONTROL_FREQUENCY   50          // 控制频率(Hz)
-#define CONTROL_PERIOD_MS   (1000/CONTROL_FREQUENCY)  // 控制周期(ms)
-#define TIMEOUT_MS          1000        // 数据超时时间(ms)
+#define CONTROL_FREQUENCY   20          // 控制频率(Hz)
+//#define CONTROL_PERIOD_MS   (1000/CONTROL_FREQUENCY)  // 控制周期(ms)
+//#define TIMEOUT_MS          1000        // 数据超时时间(ms)
 #define DEBUG_UPDATE_DIV    3           // OLED调试显示分频 (每3次更新一次)
 
 /* 坐标转换参数宏定义 - 便于调试 */
-#define PIXEL_TO_SERVO_GAIN 1.0f        // 像素到舵机位置的转换增益
-#define SERVO_RESPONSE_GAIN 0.8f        // 舵机响应增益 (0.0-1.0)
+//#define PIXEL_TO_SERVO_GAIN 1.0f        // 像素到舵机位置的转换增益，没有
 
-/* 安全保护参数宏定义 - 便于调试 */
-#define SERVO_SAFE_MIN      50          // 舵机安全最小位置
-#define SERVO_SAFE_MAX      950         // 舵机安全最大位置
-#define ERROR_LIMIT_PIXELS  200.0f      // 最大允许误差(像素)
+
+/* 舵机角度参数宏定义 - 便于调试 */
+#define SERVO_ANGLE_MIN     0.0f        // 舵机最小角度 (0°)
+#define SERVO_ANGLE_MAX     240.0f      // 舵机最大角度 (240°)
+#define SERVO_ANGLE_CENTER  120.0f      // 舵机中心角度 (120°)
+#define SERVO_SAFE_MIN      10.0f       // 舵机安全最小角度 (10°)
+#define SERVO_SAFE_MAX      230.0f      // 舵机安全最大角度 (230°)
+
+/* 像素到角度转换参数宏定义 - 便于调试 */
+#define PIXEL_TO_ANGLE_GAIN_H   (SERVO_ANGLE_MAX / IMAGE_WIDTH)    // 水平像素到角度转换增益
+#define PIXEL_TO_ANGLE_GAIN_V   (SERVO_ANGLE_MAX / IMAGE_HEIGHT)   // 垂直像素到角度转换增益
+#define ERROR_LIMIT_PIXELS      400.0f  // 最大允许误差(像素)
 
 /* 调试开关宏定义 */
 #define ENABLE_PID_DEBUG    1           // 启用PID调试输出
 #define ENABLE_OLED_DEBUG   1           // 启用OLED调试显示
-#define ENABLE_SAFETY_CHECK 1           // 启用安全检查
-
+#define ENABLE_SAFETY_CHECK 0           // 启用安全检查
+/*======================================================================================*/
 /* 函数声明 */
 bool LaserTracker_Init(void);                   // 初始化激光追踪系统
 void LaserTracker_Process(void);                // 处理激光追踪逻辑
 void LaserTracker_DeInit(void);                 // 反初始化
 bool LaserTracker_IsActive(void);               // 获取追踪状态
 void LaserTracker_SetActive(bool active);       // 设置追踪状态
-void LaserTracker_UpdatePIDParams(float kp_h, float ki_h, float kd_h, 
+void LaserTracker_UpdatePIDParams(float kp_h, float ki_h, float kd_h,
                                   float kp_v, float ki_v, float kd_v);  // 更新PID参数
-void LaserTracker_GetServoPosition(uint16_t* h_pos, uint16_t* v_pos);  // 获取舵机位置
+void LaserTracker_GetServoAngle(float* h_angle, float* v_angle);       // 获取舵机角度
+void LaserTracker_GetServoPosition(uint16_t* h_pos, uint16_t* v_pos);  // 获取舵机位置(兼容)
 
 /* 数据更新接口（由CameraComm模块调用） */
 void LaserTracker_UpdateTargetPosition(int16_t x, int16_t y);   // 更新目标位置

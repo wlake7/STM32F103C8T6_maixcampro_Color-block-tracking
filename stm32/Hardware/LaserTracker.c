@@ -22,9 +22,12 @@
  * - 修正重复计算误差的问题：
  *   原来：error_x计算 + PID内部再次计算误差 (重复且逻辑断层)
  *   现在：error_x计算 + 死区/安全处理 + 直接传入PID (逻辑清晰)
+ * - 重大更新：将控制目标从0-1000位置值改为0°-240°角度值
+ *   像素误差 -> 角度误差 -> PID控制 -> 角度增量 -> 角度限幅 -> 转换为0-1000发送
+ *   优势：更直观的角度控制，更精确的转换关系，更合理的PID参数
  * - 所有调试参数使用宏定义，便于调试和优化
  * - 增加安全检查和保护机制
- * - 优化OLED显示，显示实际使用的误差和PID输出
+ * - 优化OLED显示，显示角度误差、PID输出和舵机角度
  * - 支持调试开关，便于性能优化
  */
 
@@ -36,8 +39,8 @@ static LaserTracker_t g_laser_tracker;
 /* 内部函数声明 */
 static void PID_Init(PID_Controller_t* pid, float kp, float ki, float kd, float max_output);
 static float PID_Calculate(PID_Controller_t* pid, float setpoint, float measured);
-static float PID_CalculateWithError(PID_Controller_t* pid, float error);
-static uint16_t Position_ToServoPos(int16_t image_pos, uint8_t is_horizontal);
+static float PID_CalculateWithError(PID_Controller_t* pid, float error, float dt);
+static uint16_t Angle_ToServoPos(float angle);
 
 /**
  * @brief 初始化激光追踪系统
@@ -64,16 +67,18 @@ bool LaserTracker_Init(void)
     OLED_ShowString(3, 7, " Kd=");
     OLED_ShowNum(3, 11, (uint32_t)(PID_KD_H * 10), 1); // 显示0.1为1
 
-    // 设置舵机初始位置为中心
-    g_laser_tracker.servo_h_pos = SERVO_POS_CENTER;
-    g_laser_tracker.servo_v_pos = SERVO_POS_CENTER;
+    // 设置舵机初始角度为中心
+    g_laser_tracker.servo_h_angle = SERVO_ANGLE_CENTER;
+    g_laser_tracker.servo_v_angle = SERVO_ANGLE_CENTER;
 
     // 等待系统稳定
     Delay_ms(1000);
 
-    // 舵机回到中心位置
+    // 舵机回到中心角度
     OLED_ShowString(4, 1, "Centering servo");
-    ServoBoard_MoveHV(SERVO_POS_CENTER, SERVO_POS_CENTER, 1000);
+    uint16_t center_pos_h = Angle_ToServoPos(g_laser_tracker.servo_h_angle);
+    uint16_t center_pos_v = Angle_ToServoPos(g_laser_tracker.servo_v_angle);
+    ServoBoard_MoveHV(center_pos_h, center_pos_v, 1000);
     Delay_ms(1500);
 
     // 激活追踪
@@ -112,8 +117,14 @@ void LaserTracker_Process(void)
     
     // 检查是否有新的位置数据
     if (g_laser_tracker.target_pos.valid && g_laser_tracker.laser_pos.valid) {
-        // 更新最后更新时间
-        g_laser_tracker.last_update_time = System_GetTick();
+        uint32_t current_tick = System_GetTick();
+        float dt = (float)(current_tick - g_laser_tracker.last_update_time) / 1000.0f;
+        g_laser_tracker.last_update_time = current_tick;
+        
+        // 如果dt为0或过大，则跳过本次控制，防止异常
+        if (dt <= 0.0f || dt > 0.5f) {
+            return;
+        }
         // 计算位置误差（目标位置 - 激光位置）
         float error_x = (float)g_laser_tracker.target_pos.x - (float)g_laser_tracker.laser_pos.x;
         float error_y = (float)g_laser_tracker.target_pos.y - (float)g_laser_tracker.laser_pos.y;
@@ -128,44 +139,52 @@ void LaserTracker_Process(void)
         if (fabs(error_y) > ERROR_LIMIT_PIXELS) error_y = (error_y > 0) ? ERROR_LIMIT_PIXELS : -ERROR_LIMIT_PIXELS;
 #endif
 
-        // 使用PID控制算法 - 直接传入预处理后的误差
-        // 注意：这里使用PID_CalculateWithError函数，避免重复计算误差
-        float pid_output_h = PID_CalculateWithError(&g_laser_tracker.pid_h, error_x);
-        float pid_output_v = PID_CalculateWithError(&g_laser_tracker.pid_v, error_y);
+        // 将像素误差转换为角度误差
+        float angle_error_h = error_x * PIXEL_TO_ANGLE_GAIN_H;
+        float angle_error_v = error_y * PIXEL_TO_ANGLE_GAIN_V;
 
-        // 将PID输出转换为舵机位置增量
-        float h_increment = pid_output_h * SERVO_RESPONSE_GAIN;
-        float v_increment = pid_output_v * SERVO_RESPONSE_GAIN;
+        // 使用PID控制算法 - 直接传入角度误差
+        float pid_output_h = PID_CalculateWithError(&g_laser_tracker.pid_h, angle_error_h, dt);
+        float pid_output_v = PID_CalculateWithError(&g_laser_tracker.pid_v, angle_error_v, dt);
 
-        // 限制单次增量，防止过大跳跃
-        if (h_increment > MAX_SERVO_INCREMENT) h_increment = MAX_SERVO_INCREMENT;
-        if (h_increment < -MAX_SERVO_INCREMENT) h_increment = -MAX_SERVO_INCREMENT;
-        if (v_increment > MAX_SERVO_INCREMENT) v_increment = MAX_SERVO_INCREMENT;
-        if (v_increment < -MAX_SERVO_INCREMENT) v_increment = -MAX_SERVO_INCREMENT;
+        // 将PID输出转换为舵机角度增量
+        float h_angle_increment = -pid_output_h * SERVO_RESPONSE_GAIN;
+        float v_angle_increment = -pid_output_v * SERVO_RESPONSE_GAIN;
 
-        // 更新舵机位置（增量控制）
-        int16_t new_h_pos = (int16_t)g_laser_tracker.servo_h_pos + (int16_t)h_increment;
-        int16_t new_v_pos = (int16_t)g_laser_tracker.servo_v_pos + (int16_t)v_increment;
+        // 限制单次角度增量，防止过大跳跃
+        if (h_angle_increment > MAX_SERVO_INCREMENT) h_angle_increment = MAX_SERVO_INCREMENT;
+        if (h_angle_increment < -MAX_SERVO_INCREMENT) h_angle_increment = -MAX_SERVO_INCREMENT;
+        if (v_angle_increment > MAX_SERVO_INCREMENT) v_angle_increment = MAX_SERVO_INCREMENT;
+        if (v_angle_increment < -MAX_SERVO_INCREMENT) v_angle_increment = -MAX_SERVO_INCREMENT;
 
-        // 安全位置限幅 - 使用宏定义的安全范围
+        // 更新舵机角度（增量控制）
+        float new_h_angle = g_laser_tracker.servo_h_angle + h_angle_increment;
+        float new_v_angle = g_laser_tracker.servo_v_angle + v_angle_increment;
+
+        // 安全角度限幅 - 使用宏定义的安全范围
 #if ENABLE_SAFETY_CHECK
-        if (new_h_pos < SERVO_SAFE_MIN) new_h_pos = SERVO_SAFE_MIN;
-        if (new_h_pos > SERVO_SAFE_MAX) new_h_pos = SERVO_SAFE_MAX;
-        if (new_v_pos < SERVO_SAFE_MIN) new_v_pos = SERVO_SAFE_MIN;
-        if (new_v_pos > SERVO_SAFE_MAX) new_v_pos = SERVO_SAFE_MAX;
+        if (new_h_angle < SERVO_SAFE_MIN) new_h_angle = SERVO_SAFE_MIN;
+        if (new_h_angle > SERVO_SAFE_MAX) new_h_angle = SERVO_SAFE_MAX;
+        if (new_v_angle < SERVO_SAFE_MIN) new_v_angle = SERVO_SAFE_MIN;
+        if (new_v_angle > SERVO_SAFE_MAX) new_v_angle = SERVO_SAFE_MAX;
+/*
 #else
-        // 基本位置限幅
-        if (new_h_pos < SERVO_POS_MIN) new_h_pos = SERVO_POS_MIN;
-        if (new_h_pos > SERVO_POS_MAX) new_h_pos = SERVO_POS_MAX;
-        if (new_v_pos < SERVO_POS_MIN) new_v_pos = SERVO_POS_MIN;
-        if (new_v_pos > SERVO_POS_MAX) new_v_pos = SERVO_POS_MAX;
+        // 基本角度限幅
+        if (new_h_angle < SERVO_ANGLE_MIN) new_h_angle = SERVO_ANGLE_MIN;
+        if (new_h_angle > SERVO_ANGLE_MAX) new_h_angle = SERVO_ANGLE_MAX;
+        if (new_v_angle < SERVO_ANGLE_MIN) new_v_angle = SERVO_ANGLE_MIN;
+        if (new_v_angle > SERVO_ANGLE_MAX) new_v_angle = SERVO_ANGLE_MAX;
+*/
 #endif
 
-        g_laser_tracker.servo_h_pos = -(uint16_t)new_h_pos;
-        g_laser_tracker.servo_v_pos = -(uint16_t)new_v_pos;
+        // 更新舵机角度
+        g_laser_tracker.servo_h_angle = new_h_angle;
+        g_laser_tracker.servo_v_angle = new_v_angle;
 
-        // 发送舵机控制命令 - 使用宏定义的移动时间
-        ServoBoard_MoveHV(g_laser_tracker.servo_h_pos, g_laser_tracker.servo_v_pos, SERVO_MOVE_TIME);
+        // 将角度转换为控制板需要的位置值并发送舵机控制命令
+        uint16_t servo_h_pos = Angle_ToServoPos(g_laser_tracker.servo_h_angle);
+        uint16_t servo_v_pos = Angle_ToServoPos(g_laser_tracker.servo_v_angle);
+        ServoBoard_MoveHV(servo_h_pos, servo_v_pos, SERVO_MOVE_TIME);
 
 #if ENABLE_OLED_DEBUG
         // OLED实时调试显示 - 使用宏定义的更新分频
@@ -182,21 +201,21 @@ void LaserTracker_Process(void)
             OLED_ShowString(2, 16, ",");
             OLED_ShowNum(2, 17, g_laser_tracker.laser_pos.y, 3);
 
-            // 第3行：显示误差和PID输出
-            OLED_ShowString(3, 1, "E:");
-            OLED_ShowSignedNum(3, 3, (int32_t)error_x, 3);
+            // 第3行：显示角度误差和PID输出
+            OLED_ShowString(3, 1, "AE:");
+            OLED_ShowSignedNum(3, 4, (int32_t)angle_error_h, 2);
             OLED_ShowString(3, 6, ",");
-            OLED_ShowSignedNum(3, 7, (int32_t)error_y, 3);
-            OLED_ShowString(3, 11, "P:");
-            OLED_ShowSignedNum(3, 13, (int32_t)pid_output_h, 2);
-            OLED_ShowString(3, 15, ",");
-            OLED_ShowSignedNum(3, 16, (int32_t)pid_output_v, 2);
+            OLED_ShowSignedNum(3, 7, (int32_t)angle_error_v, 2);
+            OLED_ShowString(3, 10, "P:");
+            OLED_ShowSignedNum(3, 12, (int32_t)pid_output_h, 2);
+            OLED_ShowString(3, 14, ",");
+            OLED_ShowSignedNum(3, 15, (int32_t)pid_output_v, 2);
 
-            // 第4行：显示舵机位置
-            OLED_ShowString(4, 1, "Servo:");
-            OLED_ShowNum(4, 7, g_laser_tracker.servo_h_pos, 3);
+            // 第4行：显示舵机角度
+            OLED_ShowString(4, 1, "Angle:");
+            OLED_ShowNum(4, 7, (uint32_t)g_laser_tracker.servo_h_angle, 3);
             OLED_ShowString(4, 10, ",");
-            OLED_ShowNum(4, 11, g_laser_tracker.servo_v_pos, 3);
+            OLED_ShowNum(4, 11, (uint32_t)g_laser_tracker.servo_v_angle, 3);
         }
 #endif // ENABLE_OLED_DEBUG
 
@@ -234,10 +253,12 @@ void LaserTracker_SetActive(bool active)
     g_laser_tracker.tracking_active = active ? 1 : 0;
     
     if (!active) {
-        // 停止追踪时回到中心位置
-        ServoBoard_MoveHV(SERVO_POS_CENTER, SERVO_POS_CENTER, 500);
-        g_laser_tracker.servo_h_pos = SERVO_POS_CENTER;
-        g_laser_tracker.servo_v_pos = SERVO_POS_CENTER;
+        // 停止追踪时回到中心角度
+        g_laser_tracker.servo_h_angle = SERVO_ANGLE_CENTER;
+        g_laser_tracker.servo_v_angle = SERVO_ANGLE_CENTER;
+        uint16_t center_pos_h = Angle_ToServoPos(g_laser_tracker.servo_h_angle);
+        uint16_t center_pos_v = Angle_ToServoPos(g_laser_tracker.servo_v_angle);
+        ServoBoard_MoveHV(center_pos_h, center_pos_v, 500);
     }
 }
 
@@ -276,12 +297,21 @@ void LaserTracker_UpdatePIDParams(float kp_h, float ki_h, float kd_h,
 }
 
 /**
- * @brief 获取舵机位置
+ * @brief 获取舵机角度
+ */
+void LaserTracker_GetServoAngle(float* h_angle, float* v_angle)
+{
+    if (h_angle) *h_angle = g_laser_tracker.servo_h_angle;
+    if (v_angle) *v_angle = g_laser_tracker.servo_v_angle;
+}
+
+/**
+ * @brief 获取舵机位置 (兼容性函数，将角度转换为位置)
  */
 void LaserTracker_GetServoPosition(uint16_t* h_pos, uint16_t* v_pos)
 {
-    if (h_pos) *h_pos = g_laser_tracker.servo_h_pos;
-    if (v_pos) *v_pos = g_laser_tracker.servo_v_pos;
+    if (h_pos) *h_pos = Angle_ToServoPos(g_laser_tracker.servo_h_angle);
+    if (v_pos) *v_pos = Angle_ToServoPos(g_laser_tracker.servo_v_angle);
 }
 
 /**
@@ -341,13 +371,13 @@ static float PID_Calculate(PID_Controller_t* pid, float setpoint, float measured
  * @param error 预处理后的误差值（已经过死区处理和安全检查）
  * @return PID输出值
  */
-static float PID_CalculateWithError(PID_Controller_t* pid, float error)
+static float PID_CalculateWithError(PID_Controller_t* pid, float error, float dt)
 {
     // 直接使用传入的误差，避免重复计算
     pid->error = error;
 
     // 积分项计算（带限幅）
-    pid->integral += pid->error;
+    pid->integral += pid->error * dt;
     if (pid->integral > pid->max_integral) {
         pid->integral = pid->max_integral;
     } else if (pid->integral < -pid->max_integral) {
@@ -355,7 +385,10 @@ static float PID_CalculateWithError(PID_Controller_t* pid, float error)
     }
 
     // 微分项计算
-    float derivative = pid->error - pid->last_error;
+    float derivative = 0.0f;
+    if (dt > 0.00001f) { // 避免除以零
+        derivative = (pid->error - pid->last_error) / dt;
+    }
 
     // PID输出计算
     pid->output = pid->kp * pid->error + pid->ki * pid->integral + pid->kd * derivative;
@@ -374,23 +407,24 @@ static float PID_CalculateWithError(PID_Controller_t* pid, float error)
 }
 
 /**
- * @brief 图像坐标转换为舵机位置
+ * @brief 角度转换为舵机控制板位置值
+ * @param angle 舵机角度 (0°-240°)
+ * @return 控制板位置值 (0-1000)
+ *
+ * 根据核心规则：控制角度范围0~1000对应0°~240°
  */
-static uint16_t Position_ToServoPos(int16_t image_pos, uint8_t is_horizontal)
+static uint16_t Angle_ToServoPos(float angle)
 {
-    uint16_t servo_pos;
-    
-    if (is_horizontal) {
-        // 水平方向：图像X坐标转换为舵机位置
-        servo_pos = (uint16_t)((float)image_pos * (SERVO_POS_MAX - SERVO_POS_MIN) / IMAGE_WIDTH + SERVO_POS_MIN);
-    } else {
-        // 垂直方向：图像Y坐标转换为舵机位置（注意Y轴可能需要反向）
-        servo_pos = (uint16_t)(SERVO_POS_MAX - (float)image_pos * (SERVO_POS_MAX - SERVO_POS_MIN) / IMAGE_HEIGHT);
-    }
-    
-    // 限幅
-    if (servo_pos < SERVO_POS_MIN) servo_pos = SERVO_POS_MIN;
-    if (servo_pos > SERVO_POS_MAX) servo_pos = SERVO_POS_MAX;
-    
+    // 角度限幅
+    if (angle < SERVO_ANGLE_MIN) angle = SERVO_ANGLE_MIN;
+    if (angle > SERVO_ANGLE_MAX) angle = SERVO_ANGLE_MAX;
+
+    // 角度转换为0-1000位置值
+    // 0° -> 0, 240° -> 1000
+    uint16_t servo_pos = (uint16_t)((angle / SERVO_ANGLE_MAX) * 1000.0f);
+
+    // 再次限幅确保安全
+    if (servo_pos > 1000) servo_pos = 1000;
+
     return servo_pos;
 }

@@ -203,12 +203,6 @@
             "path": "../Hardware/CameraComm.h"
           },
           {
-            "path": "../Hardware/PIDController.c"
-          },
-          {
-            "path": "../Hardware/PIDController.h"
-          },
-          {
             "path": "../Hardware/ServoBoard.c"
           },
           {

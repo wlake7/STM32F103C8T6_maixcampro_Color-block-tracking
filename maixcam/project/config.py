@@ -12,7 +12,7 @@ class Config:
         # 摄像头配置
         self.camera_width = 640
         self.camera_height = 480
-        self.camera_fps = 30
+        self.camera_fps = 60
 
         # 显示配置
         self.display_width = 640
