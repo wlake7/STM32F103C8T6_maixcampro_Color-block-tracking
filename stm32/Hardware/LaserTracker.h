@@ -55,10 +55,40 @@ typedef struct {
 #define SERVO_POS_MAX       1000
 #define SERVO_POS_CENTER    500
 
-/* 控制参数 */
-#define CONTROL_GAIN        0.05f       // 比例控制增益（参考成功案例0.03）
-#define DEADZONE_PIXELS     3.0f        // 死区像素数
-#define MAX_INCREMENT       10.0f       // 最大单次增量
+/* PID控制参数宏定义 - 便于调试 */
+#define PID_KP_H            2.0f        // 水平轴比例增益
+#define PID_KI_H            0.01f       // 水平轴积分增益
+#define PID_KD_H            0.1f        // 水平轴微分增益
+#define PID_KP_V            2.0f        // 垂直轴比例增益
+#define PID_KI_V            0.01f       // 垂直轴积分增益
+#define PID_KD_V            0.1f        // 垂直轴微分增益
+#define PID_MAX_OUTPUT      50.0f       // PID输出限幅
+#define PID_MAX_INTEGRAL    25.0f       // PID积分限幅 (输出限幅的50%)
+
+/* 控制算法参数宏定义 - 便于调试 */
+#define DEADZONE_PIXELS     3.0f        // 死区像素数，避免小误差抖动
+#define MAX_SERVO_INCREMENT 20.0f       // 舵机最大单次位置增量
+#define SERVO_MOVE_TIME     50          // 舵机移动时间(ms) - 快速响应
+
+/* 系统控制参数宏定义 - 便于调试 */
+#define CONTROL_FREQUENCY   50          // 控制频率(Hz)
+#define CONTROL_PERIOD_MS   (1000/CONTROL_FREQUENCY)  // 控制周期(ms)
+#define TIMEOUT_MS          1000        // 数据超时时间(ms)
+#define DEBUG_UPDATE_DIV    3           // OLED调试显示分频 (每3次更新一次)
+
+/* 坐标转换参数宏定义 - 便于调试 */
+#define PIXEL_TO_SERVO_GAIN 1.0f        // 像素到舵机位置的转换增益
+#define SERVO_RESPONSE_GAIN 0.8f        // 舵机响应增益 (0.0-1.0)
+
+/* 安全保护参数宏定义 - 便于调试 */
+#define SERVO_SAFE_MIN      50          // 舵机安全最小位置
+#define SERVO_SAFE_MAX      950         // 舵机安全最大位置
+#define ERROR_LIMIT_PIXELS  200.0f      // 最大允许误差(像素)
+
+/* 调试开关宏定义 */
+#define ENABLE_PID_DEBUG    1           // 启用PID调试输出
+#define ENABLE_OLED_DEBUG   1           // 启用OLED调试显示
+#define ENABLE_SAFETY_CHECK 1           // 启用安全检查
 
 /* 函数声明 */
 bool LaserTracker_Init(void);                   // 初始化激光追踪系统

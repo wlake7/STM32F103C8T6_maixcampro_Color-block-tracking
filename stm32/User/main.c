@@ -41,9 +41,6 @@
 #define CMD_SERVO_MOVE      3
 
 
-
-
-
 /* LED状态指示 */
 #define LED_PIN     GPIO_Pin_13
 #define LED_PORT    GPIOC
@@ -100,13 +97,6 @@ int main(void)
     // 系统初始化
     System_Init();
 
-    // LED指示初始化完成
-    LED_SetState(0);  // 熄灭LED
-    Delay_ms(500);
-    LED_SetState(1);  // 点亮LED
-    Delay_ms(500);
-    LED_SetState(0);  // 熄灭LED
-
 #if CURRENT_MODE == MODE_SERVO_TEST
     // 舵机测试初始化
     ServoTest_Init();
@@ -127,11 +117,11 @@ int main(void)
 
 #elif CURRENT_MODE == MODE_LASER_TRACK
     // 激光追踪初始化
-    LaserTracker_Init();
+    LaserTracker_Init();    //只是简单的初始化了系统和pid，激活追踪状态
 
     // 主循环
     while (1) {
-        CameraComm_Process(); // 处理摄像头通信数据
+        CameraComm_Process(); // 处理摄像头通信数据，解析出坐标，无状态量赋值、赋有效标准g_laser_tracker.target_pos.valid 
         LaserTracker_Process();
 
         // LED心跳指示
@@ -220,8 +210,7 @@ static void System_Init(void)
     // OLED初始化
     OLED_Init();
     OLED_Clear();
-    OLED_ShowString(1, 1, "STM32 Laser Track");
-    OLED_ShowString(2, 1, "Initializing...");
+
 
     // 舵机控制板初始化
     ServoBoard_Init();
@@ -231,19 +220,20 @@ static void System_Init(void)
     CameraComm_Init();
 #endif
 
-    // 显示初始化完成
-    OLED_ShowString(2, 1, "Init Complete   ");
-    OLED_ShowString(3, 1, "Mode: ");
-#if CURRENT_MODE == MODE_SERVO_TEST
-    OLED_ShowString(3, 7, "SERVO_TEST");
-#elif CURRENT_MODE == MODE_LASER_TRACK
-    OLED_ShowString(3, 7, "LASER_TRACK");
-#elif CURRENT_MODE == MODE_COMM_DEBUG
-    OLED_ShowString(3, 7, "COMM_DEBUG");
-#elif CURRENT_MODE == MODE_SERVO_DEBUG
-    OLED_ShowString(3, 7, "SERVO_DEBUG");
-#elif CURRENT_MODE == MODE_CONTROL_TEST
-    OLED_ShowString(3, 7, "CTRL_TEST");
+
+    // 根据核心规则19：OLED显示核心具体数值，不显示模式名称
+    // 初始化时显示系统时间和状态
+    OLED_ShowString(1, 1, "SYS:");
+    OLED_ShowNum(1, 5, System_GetTick(), 6);
+    OLED_ShowString(2, 1, "INIT OK");
+
+#if CURRENT_MODE == MODE_LASER_TRACK
+    // 激光追踪模式：显示初始舵机位置
+    OLED_ShowString(3, 1, "H:");
+    OLED_ShowNum(3, 3, 500, 3);  // 初始水平位置
+    OLED_ShowString(3, 7, "V:");
+    OLED_ShowNum(3, 9, 500, 3);  // 初始垂直位置
+    OLED_ShowString(4, 1, "T:--- L:---");  // 目标和激光位置占位
 #endif
 
     g_system_initialized = 1;
@@ -409,33 +399,22 @@ static uint32_t g_last_laser_x = 0, g_last_laser_y = 0;
 /**
  * @brief 通信调试初始化
  */
-static void 
+static void
 CommDebug_Init(void)
 {
-    // OLED显示调试模式信息
+    // 根据核心规则19：OLED显示核心具体数值
     OLED_Clear();
-    OLED_ShowString(1, 1, "COMM DEBUG MODE");
-    OLED_ShowString(2, 1, "Waiting data...");
-    OLED_ShowString(3, 1, "RX: 0");
-    OLED_ShowString(4, 1, "Servo: 500,500");
+    OLED_ShowString(1, 1, "RX:0 ERR:0");
+    OLED_ShowString(2, 1, "T:--- L:---");
+    OLED_ShowString(3, 1, "E:--- I:---");
+    OLED_ShowString(4, 1, "S:500,500");
 
     // 启用舵机OLED调试
     ServoBoard_EnableOLEDDebug(true);
 
-    // 初始化摄像头通信，在系统初始化中已经初始化了，所有我注释掉了
-    //CameraComm_Init();
-
     // 舵机回到中心位置
-    OLED_ShowString(2, 1, "Servo centering");
     ServoBoard_ReturnToCenter();
-    Delay_ms(2000);  // 延长等待时间，观察OLED显示
-
-    // 显示就绪状态
-    OLED_Clear();
-    OLED_ShowString(1, 1, "COMM DEBUG READY");
-    OLED_ShowString(2, 1, "Waiting MaixCam");
-    OLED_ShowString(3, 1, "RX: 0");
-    OLED_ShowString(4, 1, "Servo: 500,500");
+    Delay_ms(2000);
 
     // LED指示初始化完成
     LED_SetState(1);
@@ -577,23 +556,20 @@ static uint32_t g_servo_test_count = 0;
  */
 static void ServoDebug_Init(void)
 {
-    // OLED显示调试模式信息
+    // 根据核心规则19：OLED显示核心具体数值
     OLED_Clear();
-    OLED_ShowString(1, 1, "SERVO DEBUG MODE");
-    OLED_ShowString(2, 1, "Testing servo...");
-    OLED_ShowString(3, 1, "Step: 0");
-    OLED_ShowString(4, 1, "Count: 0");
+    OLED_ShowString(1, 1, "H:500 V:500");
+    OLED_ShowString(2, 1, "Step:0 Cnt:0");
+    OLED_ShowString(3, 1, "Pos:CENTER");
+    OLED_ShowString(4, 1, "Time:");
+    OLED_ShowNum(4, 6, System_GetTick(), 6);
 
     // 启用舵机OLED调试
     ServoBoard_EnableOLEDDebug(true);
 
     // 舵机回到中心位置
-    OLED_ShowString(2, 1, "Centering...   ");
     ServoBoard_ReturnToCenter();
     Delay_ms(2000);
-
-    // 显示就绪状态
-    OLED_ShowString(2, 1, "Ready to test  ");
 
     // LED指示初始化完成
     for (int i = 0; i < 3; i++) {
@@ -611,62 +587,73 @@ static void ServoDebug_Process(void)
 {
     g_servo_test_count++;
 
-    // 更新OLED显示
-    OLED_ShowString(3, 1, "Step:");
-    OLED_ShowNum(3, 6, g_servo_test_step, 2);
-    OLED_ShowString(4, 1, "Count:");
-    OLED_ShowNum(4, 7, g_servo_test_count, 4);
+    // 更新OLED显示核心数值
+    OLED_ShowString(2, 1, "Step:");
+    OLED_ShowNum(2, 6, g_servo_test_step, 2);
+    OLED_ShowString(2, 9, "Cnt:");
+    OLED_ShowNum(2, 13, g_servo_test_count, 4);
 
+    uint16_t target_h, target_v;
     switch (g_servo_test_step) {
         case 0:
             // 测试中心位置
-            OLED_ShowString(2, 1, "Test: CENTER   ");
-            ServoBoard_MoveHV(500, 500, 1000);
+            target_h = 500; target_v = 500;
+            ServoBoard_MoveHV(target_h, target_v, 1000);
             break;
 
         case 1:
             // 测试左上角
-            OLED_ShowString(2, 1, "Test: LEFT-UP  ");
-            ServoBoard_MoveHV(200, 200, 1000);
+            target_h = 200; target_v = 200;
+            ServoBoard_MoveHV(target_h, target_v, 1000);
             break;
 
         case 2:
             // 测试右上角
-            OLED_ShowString(2, 1, "Test: RIGHT-UP ");
-            ServoBoard_MoveHV(800, 200, 1000);
+            target_h = 800; target_v = 200;
+            ServoBoard_MoveHV(target_h, target_v, 1000);
             break;
 
         case 3:
             // 测试右下角
-            OLED_ShowString(2, 1, "Test: RIGHT-DN ");
-            ServoBoard_MoveHV(800, 800, 1000);
+            target_h = 800; target_v = 800;
+            ServoBoard_MoveHV(target_h, target_v, 1000);
             break;
 
         case 4:
             // 测试左下角
-            OLED_ShowString(2, 1, "Test: LEFT-DN  ");
-            ServoBoard_MoveHV(200, 800, 1000);
+            target_h = 200; target_v = 800;
+            ServoBoard_MoveHV(target_h, target_v, 1000);
             break;
 
         case 5:
             // 测试水平扫描
-            OLED_ShowString(2, 1, "Test: H-SCAN   ");
-            ServoBoard_MoveHV(100 + (g_servo_test_count % 800), 500, 200);
+            target_h = 100 + (g_servo_test_count % 800); target_v = 500;
+            ServoBoard_MoveHV(target_h, target_v, 200);
             break;
 
         case 6:
             // 测试垂直扫描
-            OLED_ShowString(2, 1, "Test: V-SCAN   ");
-            ServoBoard_MoveHV(500, 100 + (g_servo_test_count % 800), 200);
+            target_h = 500; target_v = 100 + (g_servo_test_count % 800);
+            ServoBoard_MoveHV(target_h, target_v, 200);
             break;
 
         default:
             // 回到中心，重新开始
-            OLED_ShowString(2, 1, "Test: RESTART  ");
-            ServoBoard_MoveHV(500, 500, 1000);
+            target_h = 500; target_v = 500;
+            ServoBoard_MoveHV(target_h, target_v, 1000);
             g_servo_test_step = 0;
             return;
     }
+
+    // 显示当前目标位置
+    OLED_ShowString(1, 1, "H:");
+    OLED_ShowNum(1, 3, target_h, 3);
+    OLED_ShowString(1, 7, "V:");
+    OLED_ShowNum(1, 9, target_v, 3);
+
+    // 显示系统时间
+    OLED_ShowString(4, 1, "Time:");
+    OLED_ShowNum(4, 6, System_GetTick(), 6);
 
     // 每10次循环切换到下一个测试步骤
     if (g_servo_test_count % 10 == 0) {
@@ -692,12 +679,12 @@ static uint32_t g_control_test_step = 0;
  */
 static void ControlTest_Init(void)
 {
-    // OLED显示测试模式信息
+    // 根据核心规则19：OLED显示核心具体数值
     OLED_Clear();
-    OLED_ShowString(1, 1, "CONTROL TEST");
-    OLED_ShowString(2, 1, "Testing direction");
-    OLED_ShowString(3, 1, "Step: 0");
-    OLED_ShowString(4, 1, "Watch laser move");
+    OLED_ShowString(1, 1, "T:320,240");
+    OLED_ShowString(2, 1, "L:320,240");
+    OLED_ShowString(3, 1, "Step:0 Dir:--");
+    OLED_ShowString(4, 1, "S:500,500");
 
     // 初始化激光追踪系统
     LaserTracker_Init();
@@ -720,44 +707,57 @@ static void ControlTest_Init(void)
  */
 static void ControlTest_Process(void)
 {
-    // 更新OLED显示
+    // 更新OLED显示核心数值
     OLED_ShowString(3, 1, "Step:");
     OLED_ShowNum(3, 6, g_control_test_step, 2);
+
+    uint16_t target_x, target_y, laser_x, laser_y;
+    char direction[4];
 
     switch (g_control_test_step) {
         case 0:
             // 测试1：激光在左，目标在右，舵机应该向右移动
-            OLED_ShowString(2, 1, "Test: L->R     ");
-            LaserTracker_UpdateLaserPosition(200, 240);   // 激光在左边
-            LaserTracker_UpdateTargetPosition(400, 240);  // 目标在右边
+            laser_x = 200; laser_y = 240;
+            target_x = 400; target_y = 240;
+            strcpy(direction, "L>R");
+            LaserTracker_UpdateLaserPosition(laser_x, laser_y);
+            LaserTracker_UpdateTargetPosition(target_x, target_y);
             break;
 
         case 1:
             // 测试2：激光在右，目标在左，舵机应该向左移动
-            OLED_ShowString(2, 1, "Test: R->L     ");
-            LaserTracker_UpdateLaserPosition(400, 240);   // 激光在右边
-            LaserTracker_UpdateTargetPosition(200, 240);  // 目标在左边
+            laser_x = 400; laser_y = 240;
+            target_x = 200; target_y = 240;
+            strcpy(direction, "R>L");
+            LaserTracker_UpdateLaserPosition(laser_x, laser_y);
+            LaserTracker_UpdateTargetPosition(target_x, target_y);
             break;
 
         case 2:
             // 测试3：激光在上，目标在下，舵机应该向下移动
-            OLED_ShowString(2, 1, "Test: U->D     ");
-            LaserTracker_UpdateLaserPosition(320, 150);   // 激光在上边
-            LaserTracker_UpdateTargetPosition(320, 350);  // 目标在下边
+            laser_x = 320; laser_y = 150;
+            target_x = 320; target_y = 350;
+            strcpy(direction, "U>D");
+            LaserTracker_UpdateLaserPosition(laser_x, laser_y);
+            LaserTracker_UpdateTargetPosition(target_x, target_y);
             break;
 
         case 3:
             // 测试4：激光在下，目标在上，舵机应该向上移动
-            OLED_ShowString(2, 1, "Test: D->U     ");
-            LaserTracker_UpdateLaserPosition(320, 350);   // 激光在下边
-            LaserTracker_UpdateTargetPosition(320, 150);  // 目标在上边
+            laser_x = 320; laser_y = 350;
+            target_x = 320; target_y = 150;
+            strcpy(direction, "D>U");
+            LaserTracker_UpdateLaserPosition(laser_x, laser_y);
+            LaserTracker_UpdateTargetPosition(target_x, target_y);
             break;
 
         case 4:
             // 测试5：回到中心
-            OLED_ShowString(2, 1, "Test: CENTER   ");
-            LaserTracker_UpdateLaserPosition(320, 240);   // 激光在中心
-            LaserTracker_UpdateTargetPosition(320, 240);  // 目标在中心
+            laser_x = 320; laser_y = 240;
+            target_x = 320; target_y = 240;
+            strcpy(direction, "CTR");
+            LaserTracker_UpdateLaserPosition(laser_x, laser_y);
+            LaserTracker_UpdateTargetPosition(target_x, target_y);
             break;
 
         default:
@@ -765,6 +765,21 @@ static void ControlTest_Process(void)
             g_control_test_step = 0;
             return;
     }
+
+    // 显示目标和激光位置
+    OLED_ShowString(1, 1, "T:");
+    OLED_ShowNum(1, 3, target_x, 3);
+    OLED_ShowString(1, 6, ",");
+    OLED_ShowNum(1, 7, target_y, 3);
+
+    OLED_ShowString(2, 1, "L:");
+    OLED_ShowNum(2, 3, laser_x, 3);
+    OLED_ShowString(2, 6, ",");
+    OLED_ShowNum(2, 7, laser_y, 3);
+
+    // 显示方向
+    OLED_ShowString(3, 9, "Dir:");
+    OLED_ShowString(3, 13, direction);
 
     // 激活追踪
     LaserTracker_SetActive(true);

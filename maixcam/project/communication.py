@@ -117,7 +117,6 @@ class Communication:
         """发送位置数据 - 使用与run_communication_diagnosis()相同的格式"""
         if not target_pos or not laser_pos:
             return False
-
         try:
             # 使用与run_communication_diagnosis()完全相同的数据包格式
             target_x = int(target_pos[0])

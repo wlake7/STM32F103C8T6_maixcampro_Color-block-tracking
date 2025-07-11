@@ -2,7 +2,7 @@
 #define __OLED_H
 
 void OLED_Init(void);
-void OLED_Clear(void);
+void OLED_Clear(void);      //必须使用该函数才能清屏否则将后续显示将在前面显示状态下叠加
 void OLED_ShowChar(uint8_t Line, uint8_t Column, char Char);
 void OLED_ShowString(uint8_t Line, uint8_t Column, char *String);
 void OLED_ShowNum(uint8_t Line, uint8_t Column, uint32_t Number, uint8_t Length);
