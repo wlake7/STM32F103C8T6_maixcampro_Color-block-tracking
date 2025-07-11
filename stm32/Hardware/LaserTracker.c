@@ -219,9 +219,9 @@ void LaserTracker_Process(void)
         }
 #endif // ENABLE_OLED_DEBUG
 
-        // 保持数据有效标志，避免数据丢失导致回中
-        // g_laser_tracker.target_pos.valid = 0;
-        // g_laser_tracker.laser_pos.valid = 0;
+        // 数据处理完毕，将标志位置为无效，等待下一次更新
+        g_laser_tracker.target_pos.valid = 0;
+        g_laser_tracker.laser_pos.valid = 0;
     }
     
     // 超时检测（5秒无数据则显示超时时间）
