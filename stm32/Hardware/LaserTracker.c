@@ -148,8 +148,8 @@ void LaserTracker_Process(void)
         float pid_output_v = PID_CalculateWithError(&g_laser_tracker.pid_v, angle_error_v, dt);
 
         // 将PID输出转换为舵机角度增量
-        float h_angle_increment = -pid_output_h * SERVO_RESPONSE_GAIN;
-        float v_angle_increment = -pid_output_v * SERVO_RESPONSE_GAIN;
+        float h_angle_increment = -pid_output_h;
+        float v_angle_increment = -pid_output_v;
 
         // 限制单次角度增量，防止过大跳跃
         if (h_angle_increment > MAX_SERVO_INCREMENT) h_angle_increment = MAX_SERVO_INCREMENT;
