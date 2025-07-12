@@ -54,26 +54,25 @@ typedef struct {
 #define SERVO_POS_CENTER    500
 /*=========================================================================================*/
 /* PID控制参数宏定义 - 便于调试 */
-#define PID_KP_H            0.08f        // 水平轴比例增益 (原 2.0 * 0.4)
+#define PID_KP_H            0.07f        // 水平轴比例增益 (原 2.0 * 0.4)
 #define PID_KI_H            0.001f       // 水平轴积分增益 (原 0.2 * 0.4)
 #define PID_KD_H            0.03f        // 水平轴微分增益
 
-#define PID_KP_V            0.08f        // 垂直轴比例增益 (原 1.0 * 0.4)
+#define PID_KP_V            0.07f        // 垂直轴比例增益 (原 1.0 * 0.4)
 #define PID_KI_V            0.001f       // 垂直轴积分增益 (原 0.2 * 0.4)
 #define PID_KD_V            0.03f        // 垂直轴微分增益
 
 #define PID_MAX_OUTPUT      10.0f       // PID输出限幅 (角度增量，度)
 #define PID_MAX_INTEGRAL    5.0f        // PID积分限幅 (输出限幅的50%)
 /* 控制算法参数宏定义 - 便于调试 */
-#define DEADZONE_PIXELS     10.0f        // 死区像素数，避免小误差抖动
-#define MAX_SERVO_INCREMENT 10.0f        // 舵机最大单次角度增量 (度)
+#define DEADZONE_PIXELS     40.0f        // 死区像素数，避免小误差抖动
+#define MAX_SERVO_INCREMENT 4.0f        // 舵机最大单次角度增量 (度)
 #define SERVO_MOVE_TIME     20          // 舵机移动时间(ms) - 快速响应
 /* 系统控制参数宏定义 - 便于调试 */
+#define DEBUG_UPDATE_DIV    3           // OLED调试显示分频 (每3次更新一次)
 //#define CONTROL_FREQUENCY   20          // 控制频率(Hz)主函数延时
 //#define CONTROL_PERIOD_MS   (1000/CONTROL_FREQUENCY)  // 控制周期(ms)
 //#define TIMEOUT_MS          1000        // 数据超时时间(ms)
-#define DEBUG_UPDATE_DIV    3           // OLED调试显示分频 (每3次更新一次)
-
 /* 坐标转换参数宏定义 - 便于调试 */
 //#define PIXEL_TO_SERVO_GAIN 1.0f        // 像素到舵机位置的转换增益，没有
 
