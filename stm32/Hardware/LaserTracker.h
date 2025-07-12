@@ -65,7 +65,7 @@ typedef struct {
 #define PID_MAX_OUTPUT      10.0f       // PID输出限幅 (角度增量，度)
 #define PID_MAX_INTEGRAL    5.0f        // PID积分限幅 (输出限幅的50%)
 /* 控制算法参数宏定义 - 便于调试 */
-#define DEADZONE_PIXELS     40.0f        // 死区像素数，避免小误差抖动
+#define DEADZONE_PIXELS     30.0f        // 死区像素数，避免小误差抖动
 #define MAX_SERVO_INCREMENT 4.0f        // 舵机最大单次角度增量 (度)
 #define SERVO_MOVE_TIME     20          // 舵机移动时间(ms) - 快速响应
 /* 系统控制参数宏定义 - 便于调试 */
